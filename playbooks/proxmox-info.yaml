@@ -1,8 +1,8 @@
 ---
-- hosts: ALL
+- name: Get Proxmox info
+  hosts: ALL
   gather_facts: no
   tasks:
-    - name: Get Proxmox info
   community.general.proxmox_vm_info:
   api_host: "{{ proxmox-host }}"
   api_user: "{{ proxmox-user }}"
