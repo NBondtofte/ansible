@@ -1,10 +1,11 @@
 ---
 - name: Get Proxmox info
-  hosts: ALL
-  gather_facts: no
+  hosts: all
+  
   tasks:
-  community.general.proxmox_vm_info:
-  api_host: "{{ proxmox-host }}"
-  api_user: "{{ proxmox-user }}"
-  api_password: "{{ proxmox-password }}"
-  node: "{{ proxmox-node }}"
+    - name: Get Proxmox info
+      community.general.proxmox_vm_info:
+        api_host: "{{ proxmox-host }}"
+        api_user: "{{ proxmox-user }}"
+        api_password: "{{ proxmox-password }}"
+        node: "{{ proxmox-node }}"
