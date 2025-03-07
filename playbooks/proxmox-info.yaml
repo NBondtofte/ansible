@@ -1,8 +1,9 @@
 ---
 
 - name: Get Proxmox info
-  community.general.proxmox_vm_info:
   gather_facts: no
+  tasks:
+  community.general.proxmox_vm_info:
   api_host: "{{ proxmox-host }}"
   api_user: "{{ proxmox-user }}"
   api_password: "{{ proxmox-password }}"
