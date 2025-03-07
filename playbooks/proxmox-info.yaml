@@ -1,5 +1,5 @@
 ---
-- hosts: all
+- hosts: localhost
   tasks:
   - name: "List all existing virtual machines on node"
     community.general.proxmox_vm_info:
