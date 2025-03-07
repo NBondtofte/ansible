@@ -3,7 +3,7 @@
   tasks:
   - name: List all existing virtual machines on node
     community.general.proxmox_vm_info:
-      api_host: "{{ proxmox-host }}"
-      api_user: "{{ proxmox-user }}"
-      api_password: "{{ proxmox-password }}"
-      node: "{{ proxmox-node }}"
+      api_host: '{{ proxmox-host }}'
+      api_user: '{{ proxmox-user }}'
+      api_password: '{{ proxmox-password }}'
+      node: '{{ proxmox-node }}'
