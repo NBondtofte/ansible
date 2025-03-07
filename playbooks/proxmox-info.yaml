@@ -1,11 +1,7 @@
 ---
-- name: Get Proxmox info
-  hosts: all
-  
-  tasks:
-    - name: Get Proxmox info
-      community.general.proxmox_vm_info:
-        api_host: "{{ proxmox-host }}"
-        api_user: "{{ proxmox-user }}"
-        api_password: "{{ proxmox-password }}"
-        node: "{{ proxmox-node }}"
+- name: List all existing virtual machines on node
+  community.general.proxmox_vm_info:
+    api_host: "{{ proxmox-host }}"
+    api_user: "{{ proxmox-user }}"
+    api_password: "{{ proxmox-password }}"
+    node: "{{ proxmox-node }}"
