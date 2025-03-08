@@ -1,11 +1,11 @@
 ---
 - hosts: all
-  become: yes
+  become: true
   become_method: sudo
   tasks:
   - name: List all existing virtual machines on node
     community.general.proxmox_vm_info:
-      api_host: '{{ proxmox-host }}'
-      api_user: '{{ proxmox-user }}'
-      api_password: '{{ proxmox-password }}'
-      node: '{{ proxmox-node }}'
+      api_host: '{{ proxmox_host }}'
+      api_user: '{{ proxmox_user }}'
+      api_password: '{{ proxmox_password }}'
+      node: '{{ proxmox_node }}'
