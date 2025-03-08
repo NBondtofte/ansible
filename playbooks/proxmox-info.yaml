@@ -1,5 +1,7 @@
 ---
-- hosts: localhost
+- hosts: all
+  become: yes
+  become_method: sudo
   tasks:
   - name: List all existing virtual machines on node
     community.general.proxmox_vm_info:
