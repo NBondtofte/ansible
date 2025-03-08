@@ -15,3 +15,8 @@
       api_user: '{{ proxmox_user }}'
       api_password: '{{ proxmox_password }}'
       node: '{{ proxmox_node }}'
+    register: proxmox_vms
+  
+  - name: Display VMs
+    debug:
+      var: proxmox_vms
