@@ -24,16 +24,15 @@
     - name: Display table header
       debug:
         msg: |
-          +{{ '-' * 25 }}+{{ '-' * 10 }}+{{ '-' * 10 }}+{{ '-' * 8 }}+{{ '-' * 12 }}+{{ '-' * 25 }}+
-          | {{ 'VM NAME' | ljust(23) }} | {{ 'VM ID' | ljust(8) }} | {{ 'STATUS' | ljust(8) }} | {{ 'CPU' | ljust(6) }} | {{ 'MEMORY' | ljust(10) }} | {{ 'IP ADDRESSES' | ljust(23) }} |
-          +{{ '-' * 25 }}+{{ '-' * 10 }}+{{ '-' * 10 }}+{{ '-' * 8 }}+{{ '-' * 12 }}+{{ '-' * 25 }}+
+          +-------------------------+----------+----------+--------+------------+-------------------------+
+          | VM NAME                 | VM ID    | STATUS   | CPU    | MEMORY     | IP ADDRESSES           |
+          +-------------------------+----------+----------+--------+------------+-------------------------+
         verbosity: 0
       when: "vm_details is defined"
 
     - name: Display VM rows
       debug:
-        msg: |
-          | {{ item.name | truncate(23) | ljust(23) }} | {{ item.vmid | string | ljust(8) }} | {{ item.status | ljust(8) }} | {{ item.cpu | string | ljust(6) }} | {{ item.memory | string | ljust(10) }} | {{ (item.ip_addresses | default(['No IP']) | join(', ')) | truncate(23) | ljust(23) }} |
+        msg: "| {{ '%-23s' | format(item.name | truncate(23)) }} | {{ '%-8s' | format(item.vmid) }} | {{ '%-8s' | format(item.status) }} | {{ '%-6s' | format(item.cpu) }} | {{ '%-10s' | format(item.memory) }} | {{ '%-23s' | format((item.ip_addresses | default(['No IP']) | join(', ')) | truncate(23)) }} |"
         verbosity: 0
       loop: "{{ vm_details | default([]) }}"
       loop_control:
@@ -43,7 +42,7 @@
     - name: Display table footer
       debug:
         msg: |
-          +{{ '-' * 25 }}+{{ '-' * 10 }}+{{ '-' * 10 }}+{{ '-' * 8 }}+{{ '-' * 12 }}+{{ '-' * 25 }}+
+          +-------------------------+----------+----------+--------+------------+-------------------------+
           Total VMs: {{ vm_details | default([]) | length }}
         verbosity: 0
       when: "vm_details is defined"
