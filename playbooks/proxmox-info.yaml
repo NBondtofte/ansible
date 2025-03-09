@@ -21,14 +21,26 @@
       loop: "{{ proxmox_vms.proxmox_vms }}"
       when: proxmox_vms.proxmox_vms is defined
     
-    - name: Display VM details
+    - name: Display table header
       debug:
         msg: |
-          VM Name: {{ item.name }}
-          VM ID: {{ item.vmid }}
-          Status: {{ item.status }}
-          CPU: {{ item.cpu }}
-          Memory: {{ item.memory }}
-          IP Addresses: {{ item.ip_addresses | default(['No IP']) | join(', ') }}
+          +{{ '-' * 25 }}+{{ '-' * 10 }}+{{ '-' * 10 }}+{{ '-' * 8 }}+{{ '-' * 12 }}+{{ '-' * 25 }}+
+          | {{ 'VM NAME' | ljust(23) }} | {{ 'VM ID' | ljust(8) }} | {{ 'STATUS' | ljust(8) }} | {{ 'CPU' | ljust(6) }} | {{ 'MEMORY' | ljust(10) }} | {{ 'IP ADDRESSES' | ljust(23) }} |
+          +{{ '-' * 25 }}+{{ '-' * 10 }}+{{ '-' * 10 }}+{{ '-' * 8 }}+{{ '-' * 12 }}+{{ '-' * 25 }}+
+        verbosity: 0
+
+    - name: Display VM rows
+      debug:
+        msg: |
+          | {{ item.name | truncate(23) | ljust(23) }} | {{ item.vmid | string | ljust(8) }} | {{ item.status | ljust(8) }} | {{ item.cpu | string | ljust(6) }} | {{ item.memory | string | ljust(10) }} | {{ (item.ip_addresses | default(['No IP']) | join(', ')) | truncate(23) | ljust(23) }} |
         verbosity: 0
       loop: "{{ vm_details | default([]) }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Display table footer
+      debug:
+        msg: |
+          +{{ '-' * 25 }}+{{ '-' * 10 }}+{{ '-' * 10 }}+{{ '-' * 8 }}+{{ '-' * 12 }}+{{ '-' * 25 }}+
+          Total VMs: {{ vm_details | default([]) | length }}
+        verbosity: 0
