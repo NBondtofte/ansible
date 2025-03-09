@@ -18,8 +18,8 @@
     - name: Create simplified VM list with specific details
       set_fact:
         vm_details: "{{ vm_details | default([]) + [{'name': item.name, 'status': item.status, 'vmid': item.vmid, 'cpu': item.cpus, 'memory': item.maxmem | human_readable, 'ip_addresses': item.net | default([]) | map(attribute='ip') | select('defined') | list}] }}"
-      loop: "{{ proxmox_vms.proxmox_vms }}"
-      when: proxmox_vms.proxmox_vms is defined
+      loop: "{{ proxmox_vms.proxmox_vms | default([]) }}"
+      when: "proxmox_vms.proxmox_vms is defined"
     
     - name: Display table header
       debug:
@@ -27,7 +27,8 @@
           +{{ '-' * 25 }}+{{ '-' * 10 }}+{{ '-' * 10 }}+{{ '-' * 8 }}+{{ '-' * 12 }}+{{ '-' * 25 }}+
           | {{ 'VM NAME' | ljust(23) }} | {{ 'VM ID' | ljust(8) }} | {{ 'STATUS' | ljust(8) }} | {{ 'CPU' | ljust(6) }} | {{ 'MEMORY' | ljust(10) }} | {{ 'IP ADDRESSES' | ljust(23) }} |
           +{{ '-' * 25 }}+{{ '-' * 10 }}+{{ '-' * 10 }}+{{ '-' * 8 }}+{{ '-' * 12 }}+{{ '-' * 25 }}+
-        verbosity: 0
+      when: "vm_details is defined"
+      verbosity: 0
 
     - name: Display VM rows
       debug:
@@ -37,6 +38,7 @@
       loop: "{{ vm_details | default([]) }}"
       loop_control:
         label: "{{ item.name }}"
+      when: "vm_details is defined"
 
     - name: Display table footer
       debug:
@@ -44,3 +46,4 @@
           +{{ '-' * 25 }}+{{ '-' * 10 }}+{{ '-' * 10 }}+{{ '-' * 8 }}+{{ '-' * 12 }}+{{ '-' * 25 }}+
           Total VMs: {{ vm_details | default([]) | length }}
         verbosity: 0
+      when: "vm_details is defined"
