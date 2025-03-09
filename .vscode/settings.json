@@ -1,0 +1,5 @@
+{
+    "yaml.schemas": {
+        "https://raw.githubusercontent.com/ansible/ansible-lint/main/src/ansiblelint/schemas/requirements.json": "file:///c%3A/Users/nicolai/Documents/git/ansible/playbooks/requirements.yml"
+    }
+}
