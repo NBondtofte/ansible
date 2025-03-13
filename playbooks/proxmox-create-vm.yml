@@ -29,6 +29,3 @@
       debug:
         msg: "Successfully connected to Proxmox API"
       when: proxmox_auth.status == 200
-
-    # Further tasks for VM creation will go here
-    # This is just the connection verification part
