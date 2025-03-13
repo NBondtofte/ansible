@@ -21,3 +21,13 @@
   debug:
     msg: "{{ python_version.stdout }}"
     verbosity: 1
+
+- name: Check if Proxmox modules are available
+  ansible.builtin.command: ansible-galaxy collection list community.general
+  register: collection_check
+  changed_when: false
+  ignore_errors: true
+
+- name: Install required collection if not available
+  ansible.builtin.command: ansible-galaxy collection install community.general
+  when: "'community.general' not in collection_check.stdout"

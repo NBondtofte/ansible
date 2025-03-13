@@ -1,0 +1,33 @@
+---
+- name: Create VM in Proxmox
+  hosts: all
+  become: true
+  become_method: sudo
+  roles:
+    - proxmox-prerequisites
+  
+  vars:
+    proxmox_api_host: '{{ proxmox_host }}'
+    proxmox_api_user: '{{ proxmox_user }}'
+    proxmox_api_password: '{{ proxmox_password }}'
+    proxmox_node: '{{ proxmox_node }}'
+
+    - name: Verify Proxmox API connection
+      uri:
+        url: "https://{{ proxmox_api_host }}:8006/api2/json/access/ticket"
+        method: POST
+        body_format: form-urlencoded
+        body:
+          username: "{{ proxmox_api_user }}"
+          password: "{{ proxmox_api_password }}"
+        validate_certs: false
+      register: proxmox_auth
+      failed_when: proxmox_auth.status != 200
+      
+    - name: Display success message if connection is established
+      debug:
+        msg: "Successfully connected to Proxmox API"
+      when: proxmox_auth.status == 200
+
+    # Further tasks for VM creation will go here
+    # This is just the connection verification part
