@@ -7,10 +7,10 @@
     - proxmox-prerequisites
   
   vars:
-    proxmox_api_host: '{{ proxmox_host }}'
-    proxmox_api_user: '{{ proxmox_user }}'
-    proxmox_api_password: '{{ proxmox_password }}'
-    proxmox_node: '{{ proxmox_node }}'
+    proxmox_api_host: "{{ proxmox_host }}"
+    proxmox_api_user: "{{ proxmox_user }}"
+    proxmox_api_password: "{{ proxmox_password }}"
+    proxmox_node: "{{ proxmox_node }}"
 
   tasks:
     - name: Verify Proxmox API connection
@@ -29,3 +29,5 @@
       debug:
         msg: "Successfully connected to Proxmox API"
       when: proxmox_auth.status == 200
+
+    # You can add your VM creation tasks here
