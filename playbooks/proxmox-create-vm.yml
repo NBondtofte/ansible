@@ -7,15 +7,65 @@
     - proxmox-prerequisites
   
   vars:
+    # Connection variables
     proxmox_api_host: "{{ proxmox_host }}"
     proxmox_api_user: "{{ proxmox_user }}"
     proxmox_api_password: "{{ proxmox_password }}"
     proxmox_node: "{{ proxmox_node }}"
+    
+    # VM specifications
+    vm_name: "{{ vm_name | default('test-vm') }}"
+    vm_id: "{{ vm_id | default(0) }}"
+    vm_memory: "{{ vm_memory | default('2048') }}"
+    vm_cores: "{{ vm_cores | default('2') }}"
+    vm_sockets: "{{ vm_sockets | default('1') }}"
+    vm_disk_size: "{{ vm_disk_size | default('32') }}"
+    vm_storage: "{{ vm_storage | default('local-lvm') }}"
+    vm_network_bridge: "{{ vm_network_bridge | default('vmbr10') }}"
+    vm_vlan: "{{ vm_vlan | default(omit) }}"
+    vm_mtu: "{{ vm_mtu | default('1') }}"
+    
+    # OS type (win or linux)
+    vm_os_type: "{{ vm_os_type | default('linux') }}"
+    
+    # Windows unattended installation
+    win_timezone: "{{ win_timezone | default('Romance Standard Time') }}"
+    win_keyboard: "{{ win_keyboard | default('0406:00000406') }}"
+    # Password will be generated randomly if not provided
+    win_admin_password_provided: "{{ win_admin_password | default('') }}"
+    win_organization: "{{ win_organization | default('My Organization') }}"
+    
+    # Linux configuration
+    linux_timezone: "{{ linux_timezone | default('Europe/Copenhagen') }}"
+    linux_keyboard: "{{ linux_keyboard | default('dk') }}"
+    
+    # IP configuration (DHCP by default)
+    vm_ip_type: "{{ vm_ip_type | default('dhcp') }}"
+    vm_ip_address: "{{ vm_ip_address | default(omit) }}"
+    vm_ip_netmask: "{{ vm_ip_netmask | default(omit) }}"
+    vm_ip_gateway: "{{ vm_ip_gateway | default(omit) }}"
+    vm_ip_dns1: "{{ vm_ip_dns1 | default(omit) }}"
+    vm_ip_dns2: "{{ vm_ip_dns2 | default(omit) }}"
+    
+    # ISO specifications
+    iso_storage: "{{ iso_storage | default('local') }}"
+    iso_file: "{{ iso_file | default('debian-12.9.0-amd64-DVD-1.iso') }}"
+    windows_driver_iso: "{{ windows_driver_iso | default('virtio-win-0.1.266.iso') }}"
+    windows_iso: "{{ windows_iso | default('SERVER_EVAL_x64FRE_en-us.iso') }}"
 
   tasks:
+    - name: Generate random Windows admin password if not provided
+      set_fact:
+        win_admin_password: "{{ win_admin_password_provided | default('') or lookup('password', '/dev/null chars=ascii_lowercase,ascii_uppercase,digits length=20') }}"
+    
+    - name: Display generated Windows admin password
+      debug:
+        msg: "Windows admin password: {{ win_admin_password }}"
+        verbosity: 1  # Only show this in verbose mode for security
+      when: win_admin_password_provided == ''
+    
     - name: Verify Proxmox API connection
       uri:
-        # Extract just the hostname/IP from proxmox_host, then add the port explicitly
         url: "https://{{ proxmox_host.split(':')[0] }}:8006/api2/json/access/ticket"
         method: POST
         body_format: form-urlencoded
@@ -25,8 +75,209 @@
         validate_certs: false
       register: proxmox_auth
       failed_when: proxmox_auth.status != 200
-      
+    
     - name: Display success message if connection is established
       debug:
         msg: "Successfully connected to Proxmox API"
-      when: proxmox_auth.status == 200    # You can add your VM creation tasks here
+      when: proxmox_auth.status == 200
+    
+    # Windows unattended installation preparation
+    - name: Create temporary directory for Windows unattended installation files
+      file:
+        path: "/tmp/win_unattend"
+        state: directory
+      when: vm_os_type == 'win'
+    
+    - name: Create autounattend.xml for Windows unattended installation
+      template:
+        src: templates/autounattend.xml.j2
+        dest: "/tmp/win_unattend/autounattend.xml"
+      when: vm_os_type == 'win'
+    
+    - name: Create floppy image with autounattend.xml
+      shell: |
+        dd if=/dev/zero of=/tmp/win_unattend/floppy.img bs=1k count=1440
+        mkfs.vfat /tmp/win_unattend/floppy.img
+        mkdir -p /tmp/win_unattend/mount
+        mount -o loop /tmp/win_unattend/floppy.img /tmp/win_unattend/mount
+        cp /tmp/win_unattend/autounattend.xml /tmp/win_unattend/mount/
+        umount /tmp/win_unattend/mount
+      args:
+        executable: /bin/bash
+      when: vm_os_type == 'win'
+    
+    - name: Upload floppy image to Proxmox storage
+      copy:
+        src: "/tmp/win_unattend/floppy.img"
+        dest: "/var/lib/vz/images/{{ vm_id }}/floppy.img"
+        remote_src: true
+      when: vm_os_type == 'win'
+    
+    # Find the next available VM ID if none is specified
+    - name: Get existing VM IDs
+      community.general.proxmox_vm_info:
+        api_host: "{{ proxmox_host.split(':')[0] }}"
+        api_user: "{{ proxmox_api_user }}"
+        api_password: "{{ proxmox_api_password }}"
+        node: "{{ proxmox_node }}"
+        validate_certs: false
+      register: existing_vms
+      when: vm_id == 0
+    
+    - name: Find the next available VM ID
+      set_fact:
+        used_ids: "{{ existing_vms.proxmox_vm_info | map(attribute='vmid') | list | map('int') | list }}"
+      when: vm_id == 0
+    
+    - name: Set next available VM ID
+      set_fact:
+        vm_id: "{{ range(100, 10000) | difference(used_ids) | first }}"
+      when: vm_id == 0
+    
+    - name: Display the selected VM ID
+      debug:
+        msg: "Using VM ID: {{ vm_id }}"
+    
+    # Map OS type to Proxmox ostype value
+    - name: Set OS type based on selection
+      set_fact:
+        proxmox_ostype: "{% if vm_os_type == 'win' %}win11{% else %}l26{% endif %}"
+    
+    # Construct IP config string based on settings
+    - name: Set IP configuration
+      set_fact:
+        ip_config: >-
+          {% if vm_ip_type == 'dhcp' %}
+          ip=dhcp
+          {% else %}
+          ip={{ vm_ip_address }}/{{ vm_ip_netmask }},gw={{ vm_ip_gateway }}{% if vm_ip_dns1 is defined %},dns={{ vm_ip_dns1 }}{% if vm_ip_dns2 is defined %},{{ vm_ip_dns2 }}{% endif %}{% endif %}
+          {% endif %}
+    
+    # Create Linux VM
+    - name: Create Linux VM
+      community.general.proxmox_kvm:
+        api_host: "{{ proxmox_host.split(':')[0] }}"
+        api_user: "{{ proxmox_api_user }}"
+        api_password: "{{ proxmox_api_password }}"
+        node: "{{ proxmox_node }}"
+        validate_certs: false
+        vmid: "{{ vm_id }}"
+        name: "{{ vm_name }}"
+        ostype: "{{ proxmox_ostype }}"
+        memory: "{{ vm_memory }}"
+        cores: "{{ vm_cores }}"
+        sockets: "{{ vm_sockets }}"
+        agent: 1
+        balloon: "{{ vm_memory }}"
+        net:
+          net0: "virtio,bridge={{ vm_network_bridge }}{% if vm_vlan is defined and vm_vlan != '' %},tag={{ vm_vlan }}{% endif %},mtu={{ vm_mtu }},firewall=1"
+        virtio:
+          virtio0: "{{ vm_storage }}:{{ vm_disk_size }},iothread=1"
+        cdrom: "{{ iso_storage }}:iso/{{ iso_file }}"
+        boot: "order=virtio0;net0"
+        onboot: 1
+        scsihw: "virtio-scsi-single"
+        state: present
+      when: vm_os_type == 'linux'
+    
+    # Create Windows VM with appropriate settings
+    - name: Create Windows VM
+      community.general.proxmox_kvm:
+        api_host: "{{ proxmox_host.split(':')[0] }}"
+        api_user: "{{ proxmox_api_user }}"
+        api_password: "{{ proxmox_api_password }}"
+        node: "{{ proxmox_node }}"
+        validate_certs: false
+        vmid: "{{ vm_id }}"
+        name: "{{ vm_name }}"
+        ostype: "win11"
+        memory: "{{ vm_memory }}"
+        cores: "{{ vm_cores }}"
+        sockets: "{{ vm_sockets }}"
+        agent: 1
+        bios: ovmf
+        balloon: "{{ vm_memory }}"
+        net:
+          net0: "virtio,bridge={{ vm_network_bridge }}{% if vm_vlan is defined and vm_vlan != '' %},tag={{ vm_vlan }}{% endif %},mtu={{ vm_mtu }},firewall=1"
+        virtio:
+          virtio0: "{{ vm_storage }}:{{ vm_disk_size }},iothread=1"
+        ide:
+          ide0: "{{ iso_storage }}:iso/{{ windows_driver_iso }},media=cdrom"
+          ide2: "{{ iso_storage }}:iso/{{ windows_iso }},media=cdrom"
+        boot: "order=virtio0;ide0;ide2;net0"
+        onboot: 1
+        scsihw: "virtio-scsi-single"
+        machine: "pc-q35-8.1"
+        cpu: "x86-64-v2-AES"
+        vga: "qxl"
+        serial0: "socket"
+        efidisk0: "{{ vm_storage }}:1,efitype=4m,pre-enrolled-keys=1"
+        tpmstate0: "{{ vm_storage }}:4,version=v2.0"  # TPM storage is local-lvm
+        args: "-drive file=/var/lib/vz/images/{{ vm_id }}/floppy.img,if=floppy,format=raw"
+        state: present
+      when: vm_os_type == 'win'
+    
+    # For Linux unattended installation with cloud-init
+    - name: Create cloud-init configuration for Linux
+      community.general.proxmox_kvm:
+        api_host: "{{ proxmox_host.split(':')[0] }}"
+        api_user: "{{ proxmox_api_user }}"
+        api_password: "{{ proxmox_api_password }}"
+        node: "{{ proxmox_node }}"
+        validate_certs: false
+        vmid: "{{ vm_id }}"
+        name: "{{ vm_name }}"
+        cicustom: "user=local:snippets/cloud-init-user.yml,network=local:snippets/cloud-init-network.yml"
+        ipconfig:
+          ipconfig0: "{{ ip_config }}"
+        state: present
+      ignore_errors: true
+      when: vm_os_type == 'linux'
+    
+    - name: Start VM
+      community.general.proxmox_kvm:
+        api_host: "{{ proxmox_host.split(':')[0] }}"
+        api_user: "{{ proxmox_api_user }}"
+        api_password: "{{ proxmox_api_password }}"
+        node: "{{ proxmox_node }}"
+        validate_certs: false
+        vmid: "{{ vm_id }}"
+        state: started
+    
+    - name: Clean up temporary files
+      file:
+        path: "/tmp/win_unattend"
+        state: absent
+      when: vm_os_type == 'win'
+    
+    # Display VM creation summary
+    - name: Display VM creation summary
+      debug:
+        msg: |
+          VM creation completed successfully!
+          
+          VM Details:
+          - Name: {{ vm_name }}
+          - ID: {{ vm_id }}
+          - Node: {{ proxmox_node }}
+          - Memory: {{ vm_memory }} MB
+          - CPU: {{ vm_cores }} cores / {{ vm_sockets }} socket(s)
+          - Disk: {{ vm_disk_size }} GB
+          - OS Type: {{ vm_os_type }}
+          {% if vm_os_type == 'win' %}
+          - Windows Admin Password: {{ win_admin_password }}
+          {% endif %}
+    
+    # Save Windows password to a file if Windows VM was created
+    - name: Save Windows admin password to a file
+      copy:
+        content: "VM Name: {{ vm_name }}\nWindows Admin Password: {{ win_admin_password }}\nCreated on: {{ ansible_date_time.date }}"
+        dest: "/tmp/{{ vm_name }}_credentials.txt"
+        mode: '0600'
+      when: vm_os_type == 'win'
+      delegate_to: localhost
+    
+    - name: Notify where to find the saved credentials
+      debug:
+        msg: "Windows admin credentials have been saved to /tmp/{{ vm_name }}_credentials.txt on the Ansible controller"
+      when: vm_os_type == 'win'
