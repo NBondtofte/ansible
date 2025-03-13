@@ -7,6 +7,7 @@
     - proxmox-prerequisites
   
   vars:
+    # If proxmox_host already includes the port, don't add it in the URL
     proxmox_api_host: "{{ proxmox_host }}"
     proxmox_api_user: "{{ proxmox_user }}"
     proxmox_api_password: "{{ proxmox_password }}"
@@ -15,19 +16,19 @@
   tasks:
     - name: Verify Proxmox API connection
       uri:
-        url: "https://{{ proxmox_api_host }}:8006/api2/json/access/ticket"
+        # Use a conditional to handle the port appropriately
+        url: "https://{{ proxmox_host.split(':')[0] }}/api2/json/access/ticket"
         method: POST
         body_format: form-urlencoded
         body:
           username: "{{ proxmox_api_user }}"
           password: "{{ proxmox_api_password }}"
         validate_certs: false
+        status_code: 200
       register: proxmox_auth
-      failed_when: proxmox_auth.status != 200
       
     - name: Display success message if connection is established
       debug:
         msg: "Successfully connected to Proxmox API"
       when: proxmox_auth.status == 200
-
     # You can add your VM creation tasks here
