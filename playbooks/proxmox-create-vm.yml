@@ -12,6 +12,7 @@
     proxmox_api_password: '{{ proxmox_password }}'
     proxmox_node: '{{ proxmox_node }}'
 
+  tasks:
     - name: Verify Proxmox API connection
       uri:
         url: "https://{{ proxmox_api_host }}:8006/api2/json/access/ticket"
