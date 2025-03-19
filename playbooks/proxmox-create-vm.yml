@@ -90,7 +90,7 @@
     # Generate a hashed password for cloud-init
     - name: Generate hashed password for cloud-init
       set_fact:
-        ansible_password_hash: "{{ linux_root_password | password_hash('sha512', 'saltsalt', rounds=4096) }}"
+        ansible_password_hash: "{{ linux_root_password | password_hash('sha512', 'saltsalt') }}"
       when: vm_os_type == 'linux'
       no_log: true
 
