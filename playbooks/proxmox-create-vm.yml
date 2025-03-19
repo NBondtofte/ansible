@@ -89,10 +89,9 @@
 
     # Generate a hashed password for cloud-init
     - name: Generate hashed password for cloud-init
-      shell: "python3 -c \"import crypt; print(crypt.crypt('{{ linux_root_password }}', '\$6\$rounds=4096\$saltsalt\$'))\""
-      register: hashed_password
+      set_fact:
+        ansible_password_hash: "{{ linux_root_password | password_hash('sha512', 'saltsalt', rounds=4096) }}"
       when: vm_os_type == 'linux'
-      changed_when: false
       no_log: true
 
     - name: Upload cloud-init user template with generated password
