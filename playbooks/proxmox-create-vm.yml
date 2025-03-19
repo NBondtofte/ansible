@@ -38,6 +38,8 @@
     # Linux configuration
     linux_timezone: "{{ linux_timezone | default('Europe/Copenhagen') }}"
     linux_keyboard: "{{ linux_keyboard | default('dk') }}"
+    # Linux password will be generated randomly if not provided
+    linux_root_password_provided: "{{ linux_root_password | default('') }}"
     
     # IP configuration (DHCP by default)
     vm_ip_type: "{{ vm_ip_type | default('dhcp') }}"
@@ -54,15 +56,60 @@
     windows_iso: "{{ windows_iso | default('SERVER_EVAL_x64FRE_en-us.iso') }}"
 
   tasks:
+    # Generate random passwords if not provided
     - name: Generate random Windows admin password if not provided
       set_fact:
         win_admin_password: "{{ win_admin_password_provided | default('') or lookup('password', '/dev/null chars=ascii_lowercase,ascii_uppercase,digits length=20') }}"
+      when: vm_os_type == 'win'
+    
+    - name: Generate random Linux root password if not provided
+      set_fact:
+        linux_root_password: "{{ linux_root_password_provided | default('') or lookup('password', '/dev/null chars=ascii_lowercase,ascii_uppercase,digits length=20') }}"
+      when: vm_os_type == 'linux'
     
     - name: Display generated Windows admin password
       debug:
         msg: "Windows admin password: {{ win_admin_password }}"
         verbosity: 1  # Only show this in verbose mode for security
-      when: win_admin_password_provided == ''
+      when: vm_os_type == 'win' and win_admin_password_provided == ''
+    
+    - name: Display generated Linux root password
+      debug:
+        msg: "Linux root/ansible password: {{ linux_root_password }}"
+        verbosity: 1  # Only show this in verbose mode for security
+      when: vm_os_type == 'linux' and linux_root_password_provided == ''
+    
+    # Upload cloud-init templates only if creating a Linux VM
+    - name: Create snippets directory if it doesn't exist
+      file:
+        path: /var/lib/vz/snippets
+        state: directory
+        mode: '0755'
+      when: vm_os_type == 'linux'
+
+    # Generate a hashed password for cloud-init
+    - name: Generate hashed password for cloud-init
+      shell: "python3 -c \"import crypt; print(crypt.crypt('{{ linux_root_password }}', '\$6\$rounds=4096\$saltsalt\$'))\""
+      register: hashed_password
+      when: vm_os_type == 'linux'
+      changed_when: false
+      no_log: true
+
+    - name: Upload cloud-init user template with generated password
+      template:
+        src: templates/cloud-init-user.yml
+        dest: /var/lib/vz/snippets/cloud-init-user.yml
+        mode: '0644'
+      vars:
+        ansible_password_hash: "{{ hashed_password.stdout | default('') }}"
+      when: vm_os_type == 'linux'
+
+    - name: Upload cloud-init network template
+      template:
+        src: templates/cloud-init-network.yml
+        dest: /var/lib/vz/snippets/cloud-init-network.yml
+        mode: '0644'
+      when: vm_os_type == 'linux'
     
     - name: Verify Proxmox API connection
       uri:
@@ -266,9 +313,12 @@
           - OS Type: {{ vm_os_type }}
           {% if vm_os_type == 'win' %}
           - Windows Admin Password: {{ win_admin_password }}
+          {% elif vm_os_type == 'linux' %}
+          - Linux User: ansible
+          - Linux Password: {{ linux_root_password }}
           {% endif %}
     
-    # Save Windows password to a file if Windows VM was created
+    # Save credentials to a file
     - name: Save Windows admin password to a file
       copy:
         content: "VM Name: {{ vm_name }}\nWindows Admin Password: {{ win_admin_password }}\nCreated on: {{ ansible_date_time.date }}"
@@ -277,7 +327,14 @@
       when: vm_os_type == 'win'
       delegate_to: localhost
     
+    - name: Save Linux credentials to a file
+      copy:
+        content: "VM Name: {{ vm_name }}\nLinux User: ansible\nLinux Password: {{ linux_root_password }}\nCreated on: {{ ansible_date_time.date }}"
+        dest: "/tmp/{{ vm_name }}_credentials.txt"
+        mode: '0600'
+      when: vm_os_type == 'linux'
+      delegate_to: localhost
+    
     - name: Notify where to find the saved credentials
       debug:
-        msg: "Windows admin credentials have been saved to /tmp/{{ vm_name }}_credentials.txt on the Ansible controller"
-      when: vm_os_type == 'win'
+        msg: "VM credentials have been saved to /tmp/{{ vm_name }}_credentials.txt on the Ansible controller"
