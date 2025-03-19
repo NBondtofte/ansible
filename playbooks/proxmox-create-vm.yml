@@ -92,7 +92,7 @@
       set_fact:
         ansible_password_hash: "{{ linux_root_password | password_hash('sha512', 'saltsalt') }}"
       when: vm_os_type == 'linux'
-      no_log: true
+      no_log: false
 
     - name: Upload cloud-init user template with generated password
       template:
