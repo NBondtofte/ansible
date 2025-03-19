@@ -1,0 +1,46 @@
+#cloud-config
+hostname: {{ vm_name }}
+manage_etc_hosts: true
+
+# Set timezone
+timezone: {{ linux_timezone }}
+
+# Configure users
+users:
+  - name: ansible
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    lock_passwd: false
+    # Password is 'ansible' - you should change this in production
+    passwd: $6$rounds=4096$saltsalt$NZkG4VjEQJ9ZxXXfUJXbk5.Ql9QXCCgZYSH8z3NQzTH9kvI9kf/zShFEgXgxM.FzQRSyNn5oY5HJWBgMJXgBf/
+    ssh_authorized_keys:
+      - {{ ssh_public_key | default('ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC0WGP1EZykEtv5YGC9nMiPFW3U3DmZNzKFO5nEu6uozEHh4jLZzPNHSrfFTuQ2GnRDSt+XbOtTLdcj26+iPNiFoFha42aCIzYjt6V8Z+SQ9pzF4jPPzxwXfDdkEWylgoNnZ+4MG1lNFqa8aO7F62tX0Yj5khjC7MgMgS3pWvO3EgzaLWzu9gpTNVO+KMKqU5jzY5w4Ff4hZgdZoODez0bAYPbrS5LxH5HHm5CYP6/kIx/6JBZQhgPX/RjWRbHqUfQf3u1JNB+B+LiXUPcVzq8t6GXwBRzpWlyy/nHQ+pB4qUkgRVz1WMVuYsJVWZ/CC8fFJxqS4NtGvFvPkgYQdLUL ansible@example.com') }}
+
+# Configure password authentication
+chpasswd:
+  expire: false
+  list: |
+    ansible:ansible
+
+# Install packages
+package_update: true
+package_upgrade: true
+packages:
+  - qemu-guest-agent
+  - python3
+  - python3-pip
+  - sudo
+  - curl
+  - wget
+  - vim
+  - htop
+
+# Run commands on first boot
+runcmd:
+  - systemctl enable qemu-guest-agent
+  - systemctl start qemu-guest-agent
+  - echo "Cloud-init setup completed" > /var/log/cloud-init-completed.log
+
+# Configure SSH
+ssh_pwauth: true
+disable_root: false
