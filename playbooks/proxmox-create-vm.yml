@@ -26,7 +26,7 @@
     vm_mtu: "{{ vm_mtu | default('1') }}"
     
     # OS type (win or linux)
-    vm_os_type: "{{ vm_os_type | default('linux') }}"
+    vm_os_type: "{{ vm_os_type_param | default('linux') }}"
     
     # Windows unattended installation
     win_timezone: "{{ win_timezone | default('Romance Standard Time') }}"
