@@ -129,7 +129,6 @@
           password: "{{ proxmox_api_password }}"
         validate_certs: false
       register: proxmox_auth
-      # Remove the failed_when for now
 
     - name: Debug proxmox_auth variable
       debug:
@@ -139,7 +138,9 @@
     - name: Display success message if connection is established
       debug:
         msg: "Successfully connected to Proxmox API"
-      when: proxmox_auth is succeeded    # Windows unattended installation preparation
+      when: proxmox_auth is succeeded
+
+    # Windows unattended installation preparation
     - name: Create temporary directory for Windows unattended installation files
       file:
         path: "/tmp/win_unattend"
@@ -170,7 +171,7 @@
         dest: "/var/lib/vz/images/{{ vm_id }}/floppy.img"
         remote_src: true
       when: vm_os_type == 'win'
-    
+
     # Find the next available VM ID if none is specified
     - name: Get existing VM IDs
       community.general.proxmox_vm_info:
@@ -180,18 +181,18 @@
         node: "{{ proxmox_node }}"
         validate_certs: false
       register: existing_vms
-      when: vm_id == 0
-    
+      when: vm_id | int == 0
+
     - name: Find the next available VM ID
       set_fact:
         used_ids: "{{ existing_vms.proxmox_vm_info | map(attribute='vmid') | list | map('int') | list }}"
-      when: vm_id == 0
-    
+      when: vm_id | int == 0
+
     - name: Set next available VM ID
       set_fact:
         vm_id: "{{ range(100, 10000) | difference(used_ids) | first }}"
-      when: vm_id == 0
-    
+      when: vm_id | int == 0
+
     - name: Display the selected VM ID
       debug:
         msg: "Using VM ID: {{ vm_id }}"
@@ -271,7 +272,7 @@
         vga: "qxl"
         serial0: "socket"
         efidisk0: "{{ vm_storage }}:1,efitype=4m,pre-enrolled-keys=1"
-        tpmstate0: "{{ vm_storage }}:4,version=v2.0"  # TPM storage is local-lvm
+        tpmstate0: "{{ vm_storage }}:4,version=v2.0"
         args: "-drive file=/var/lib/vz/images/{{ vm_id }}/floppy.img,if=floppy,format=raw"
         state: present
       when: vm_os_type == 'win'
