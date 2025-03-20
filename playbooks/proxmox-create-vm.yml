@@ -6,12 +6,12 @@
   
   pre_tasks:
     - name: Ensure passlib is installed
-      pip:
-        name: passlib
+      package:
+        name: python3-passlib
         state: present
       delegate_to: localhost
       run_once: true
-      become: false  # Usually not needed in Semaphore
+      become: true  # You might need sudo privileges to install packages
   
   roles:
     - proxmox-prerequisites
