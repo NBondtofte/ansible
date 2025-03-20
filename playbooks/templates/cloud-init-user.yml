@@ -12,29 +12,24 @@ users:
     shell: /bin/bash
     lock_passwd: false
     # Password is dynamically generated
-    passwd: {{ ansible_password_hash | default('$6$rounds=4096$saltsalt$NZkG4VjEQJ9ZxXXfUJX
+    passwd: "{{ ansible_password_hash | default('$6$rounds=4096$saltsalt$NZkG4VjEQJ9ZxXXfUJXbk5.Ql9QXCCgZYSH8z3NQzTH9kvI9kf/zShFEgXgxM.FzQRSyNn5oY5HJWBgMJXgBf/') }}"
 
 # Configure password authentication
 chpasswd:
   expire: false
   list: |
     ansible:ansible
-  # Install packages
-  package_update: true
-  package_upgrade: true
-  packages:
-    - qemu-guest-agent
-    - python3
-    - python3-pip
-    - sudo
-    - curl
-    - wget
-    - vim
-    - htop
 
-  # Run commands on first boot
-  runcmd:
-    - systemctl enable qemu-guest-agent
+# Install packages
+package_update: true
+package_upgrade: true
+packages:
+  - qemu-guest-agent
+  - sudo
+
+# Run commands on first boot
+runcmd:
+  - systemctl enable qemu-guest-agent
   - systemctl start qemu-guest-agent
   - echo "Cloud-init setup completed" > /var/log/cloud-init-completed.log
 
