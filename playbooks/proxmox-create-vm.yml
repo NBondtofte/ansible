@@ -18,53 +18,52 @@
   
   vars:
     # Connection variables
-    proxmox_api_host: "{{ proxmox_host }}"
-    proxmox_api_user: "{{ proxmox_user }}"
-    proxmox_api_password: "{{ proxmox_password }}"
-    proxmox_node: "{{ proxmox_node }}"
+    proxmox_api_host: "{{ proxmox_host_param | default(proxmox_host) }}"
+    proxmox_api_user: "{{ proxmox_user_param | default(proxmox_user) }}"
+    proxmox_api_password: "{{ proxmox_password_param | default(proxmox_password) }}"
+    proxmox_node: "{{ proxmox_node_param | default('pve') }}"
     
     # VM specifications
-    vm_name: "{{ vm_name | default('test-vm') }}"
-    vm_id: "{{ vm_id | default(0) }}"
-    vm_memory: "{{ vm_memory | default('2048') }}"
-    vm_cores: "{{ vm_cores | default('2') }}"
-    vm_sockets: "{{ vm_sockets | default('1') }}"
-    vm_disk_size: "{{ vm_disk_size | default('32') }}"
-    vm_storage: "{{ vm_storage | default('local-lvm') }}"
-    vm_network_bridge: "{{ vm_network_bridge | default('vmbr10') }}"
-    vm_vlan: "{{ vm_vlan | default(omit) }}"
-    vm_mtu: "{{ vm_mtu | default('1') }}"
+    vm_name: "{{ vm_name_param | default('test-vm') }}"
+    vm_id: "{{ vm_id_param | default(0) }}"
+    vm_memory: "{{ vm_memory_param | default('2048') }}"
+    vm_cores: "{{ vm_cores_param | default('2') }}"
+    vm_sockets: "{{ vm_sockets_param | default('1') }}"
+    vm_disk_size: "{{ vm_disk_size_param | default('32') }}"
+    vm_storage: "{{ vm_storage_param | default('local-lvm') }}"
+    vm_network_bridge: "{{ vm_network_bridge_param | default('vmbr10') }}"
+    vm_vlan: "{{ vm_vlan_param | default(omit) }}"
+    vm_mtu: "{{ vm_mtu_param | default('1') }}"
     
     # OS type (win or linux)
     vm_os_type: "{{ vm_os_type_param | default('linux') }}"
     
     # Windows unattended installation
-    win_timezone: "{{ win_timezone | default('Romance Standard Time') }}"
-    win_keyboard: "{{ win_keyboard | default('0406:00000406') }}"
+    win_timezone: "{{ win_timezone_param | default('Romance Standard Time') }}"
+    win_keyboard: "{{ win_keyboard_param | default('0406:00000406') }}"
     # Password will be generated randomly if not provided
-    win_admin_password_provided: "{{ win_admin_password | default('') }}"
-    win_organization: "{{ win_organization | default('My Organization') }}"
+    win_admin_password_provided: "{{ win_admin_password_param | default('') }}"
+    win_organization: "{{ win_organization_param | default('My Organization') }}"
     
     # Linux configuration
-    linux_timezone: "{{ linux_timezone | default('Europe/Copenhagen') }}"
-    linux_keyboard: "{{ linux_keyboard | default('dk') }}"
+    linux_timezone: "{{ linux_timezone_param | default('Europe/Copenhagen') }}"
+    linux_keyboard: "{{ linux_keyboard_param | default('dk') }}"
     # Linux password will be generated randomly if not provided
-    linux_root_password_provided: "{{ linux_root_password | default('') }}"
+    linux_root_password_provided: "{{ linux_root_password_param | default('') }}"
     
     # IP configuration (DHCP by default)
-    vm_ip_type: "{{ vm_ip_type | default('dhcp') }}"
-    vm_ip_address: "{{ vm_ip_address | default(omit) }}"
-    vm_ip_netmask: "{{ vm_ip_netmask | default(omit) }}"
-    vm_ip_gateway: "{{ vm_ip_gateway | default(omit) }}"
-    vm_ip_dns1: "{{ vm_ip_dns1 | default(omit) }}"
-    vm_ip_dns2: "{{ vm_ip_dns2 | default(omit) }}"
+    vm_ip_type: "{{ vm_ip_type_param | default('dhcp') }}"
+    vm_ip_address: "{{ vm_ip_address_param | default(omit) }}"
+    vm_ip_netmask: "{{ vm_ip_netmask_param | default(omit) }}"
+    vm_ip_gateway: "{{ vm_ip_gateway_param | default(omit) }}"
+    vm_ip_dns1: "{{ vm_ip_dns1_param | default(omit) }}"
+    vm_ip_dns2: "{{ vm_ip_dns2_param | default(omit) }}"
     
     # ISO specifications
-    iso_storage: "{{ iso_storage | default('local') }}"
-    iso_file: "{{ iso_file | default('debian-12.9.0-amd64-DVD-1.iso') }}"
-    windows_driver_iso: "{{ windows_driver_iso | default('virtio-win-0.1.266.iso') }}"
-    windows_iso: "{{ windows_iso | default('SERVER_EVAL_x64FRE_en-us.iso') }}"
-
+    iso_storage: "{{ iso_storage_param | default('local') }}"
+    iso_file: "{{ iso_file_param | default('debian-12.9.0-amd64-DVD-1.iso') }}"
+    windows_driver_iso: "{{ windows_driver_iso_param | default('virtio-win-0.1.266.iso') }}"
+    windows_iso: "{{ windows_iso_param | default('SERVER_EVAL_x64FRE_en-us.iso') }}"
   tasks:
     # Generate random passwords if not provided
     - name: Generate random Windows admin password if not provided
