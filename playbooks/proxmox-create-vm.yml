@@ -3,6 +3,16 @@
   hosts: all
   become: true
   become_method: sudo
+  
+  pre_tasks:
+    - name: Ensure passlib is installed
+      pip:
+        name: passlib
+        state: present
+      delegate_to: localhost
+      run_once: true
+      become: false  # Usually not needed in Semaphore
+  
   roles:
     - proxmox-prerequisites
   
