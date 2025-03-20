@@ -129,13 +129,12 @@
           password: "{{ proxmox_api_password }}"
         validate_certs: false
       register: proxmox_auth
-      failed_when: proxmox_auth.status != 200
-    
+      failed_when: proxmox_auth.status_code != 200
+
     - name: Display success message if connection is established
       debug:
         msg: "Successfully connected to Proxmox API"
-      when: proxmox_auth.status == 200
-    
+      when: proxmox_auth.status_code == 200    
     # Windows unattended installation preparation
     - name: Create temporary directory for Windows unattended installation files
       file:
