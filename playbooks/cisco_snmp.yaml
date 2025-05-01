@@ -1,4 +1,5 @@
 ---
 - name: Get port details and MAC-addresses
+  hosts: Cisco
   gather_facts: false
   connection: local
