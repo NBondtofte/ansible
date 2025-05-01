@@ -1,11 +1,9 @@
 ---
-- name: Get port details and MAC-addresses
-  hosts: Cisco
-  gather_facts: false
-  connection: local
+- name: Verify interface status on Cisco switches
+  hosts: cisco
+  gather_facts: no
   tasks:
-    - name: Configure VLAN 100 on switch
-      ios_config:
-        lines:
-          - vlan 234
-          - name Marketing
+    - name: Show interfaces status
+      ios_command:
+        commands:
+          - show ip interface brief
