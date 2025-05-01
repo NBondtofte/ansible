@@ -4,5 +4,5 @@
   gather_facts: no
   tasks:
   - name: Run show version on remote devices
-      cisco.ios.ios_command:
-      commands: show version
+    cisco.ios.ios_command:
+    commands: show version
