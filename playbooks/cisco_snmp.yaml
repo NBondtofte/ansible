@@ -5,6 +5,6 @@
   tasks:
     - name: Create snmp community
       community.network.pn_snmp_community:
-        state: "present"
-        pn_community_string: "mani"
+        state: "update"
+        pn_community_string: "manitest"
         pn_community_type: "read-only"
