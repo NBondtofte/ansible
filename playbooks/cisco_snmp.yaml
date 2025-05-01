@@ -8,6 +8,6 @@
        ansible.builtin.pip:
          name: ansible-pylibssh
        delegate_to: localhost
-    - name: show version
+     - name: show version
       ios_command:
         commands: show version
