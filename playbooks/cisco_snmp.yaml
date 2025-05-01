@@ -1,6 +1,5 @@
 ---
 - hosts: all
-  connection: routers
   gather_facts: no
   tasks:
   - name: Run show version on remote devices
