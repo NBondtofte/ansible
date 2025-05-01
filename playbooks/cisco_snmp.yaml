@@ -9,5 +9,5 @@
          name: ansible-pylibssh
        delegate_to: localhost
      - name: show version
-      ios_command:
-        commands: show version
+       ios_command:
+         commands: show version
