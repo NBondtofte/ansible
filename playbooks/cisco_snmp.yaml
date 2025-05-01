@@ -1,6 +1,6 @@
 ---
 - name: Verify interface status on Cisco switches
-  hosts: cisco
+  hosts: Cisco
   gather_facts: no
   tasks:
     - name: Show interfaces status
