@@ -1,0 +1,7 @@
+---
+- name: Enable the SNMP server with a given community. READ ONLY
+  ios_config:
+    lines:
+      - snmp-server community {{ SNMP_COMMUNITY }} RO
+    backup: yes
+    provider: "{{ ssh }}"
