@@ -1,7 +1,4 @@
 ---
-- hosts: all
-  gather_facts: no
-  tasks:
-  - name: Run show version on remote devices
-    cisco.ios.ios_command:
-      commands: show version
+- name: Get port details and MAC-addresses
+  gather_facts: false
+  connection: local
