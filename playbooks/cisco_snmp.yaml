@@ -3,7 +3,7 @@
   hosts: Cisco
   gather_facts: false
   connection: local
-    tasks:
+  tasks:
     - name: show version
       ios_command:
         commands: show version
