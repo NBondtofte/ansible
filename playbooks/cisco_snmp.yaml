@@ -4,10 +4,8 @@
   gather_facts: false
   connection: local
   tasks:
-     - name: Install python package
-       ansible.builtin.pip:
-         name: ansible-pylibssh
-       delegate_to: localhost
-     - name: show version
-       ios_command:
-         commands: show version
+    - name: Configure VLAN 100 on switch
+      ios_config:
+        lines:
+          - vlan 234
+          - name Marketing
