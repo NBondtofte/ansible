@@ -4,6 +4,9 @@
   gather_facts: false
   connection: local
   tasks:
+    - name: Install python package
+      ansible.builtin.pip:
+        name: ansible-pylibssh
     - name: show version
       ios_command:
         commands: show version
