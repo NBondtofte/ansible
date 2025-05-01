@@ -4,6 +4,6 @@
   gather_facts: false
   connection: local
     tasks:
-    - name: Accespt ansible net hostname
-     ios_facts:
-        gather_subset: all
+    - name: show version
+      ios_command:
+        commands: show version
