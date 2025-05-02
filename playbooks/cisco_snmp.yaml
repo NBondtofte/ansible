@@ -6,10 +6,7 @@
       - name: show run
         ios_command:
           commands:
-          - show run
-          - show ip route
-          - show ip eigrp neighbors
-          - show version
+          - show ip interface brief
         register: config
         
       - name: Parse the output
