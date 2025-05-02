@@ -7,5 +7,7 @@
       ios_command:
         commands:
           - show ip interface brief
-          - show run
-          - show version
+        register: output
+    - name: Parse the output
+      debug:
+        msg: "{{ output }}"
