@@ -3,11 +3,15 @@
   hosts: Cisco
   gather_facts: no
   tasks:
-    - name: Show interfaces status
-      ios_command:
-        commands:
-          - show ip interface brief
-        register: output
+      - name: show run
+        ios_command:
+          commands:
+          - show run
+          - show ip route
+          - show ip eigrp neighbors
+          - show version
+        register: config
+        
     - name: Parse the output
       debug:
-        msg: "{{ output }}"
+        msg: "{{ config }}"
