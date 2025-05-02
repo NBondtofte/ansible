@@ -12,6 +12,6 @@
           - show version
         register: config
         
-    - name: Parse the output
-      debug:
-        msg: "{{ config }}"
+      - name: Parse the output
+        debug:
+          msg: "{{ config }}"
