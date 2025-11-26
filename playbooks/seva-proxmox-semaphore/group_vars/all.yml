@@ -1,0 +1,50 @@
+# group_vars/all.yml
+
+# ---------- Proxmox ----------
+proxmox_api_host: "192.168.123.51"  # eller IP på en node
+proxmox_api_user: "ansible@pve"
+proxmox_api_token_id: "ansi"
+proxmox_api_token_secret: "CHANGEME"              # læg den helst i Semaphore env var
+proxmox_node: "sevahost1"                             # default node
+proxmox_storage: "vm_storage"                      # hvor disken skal bo
+proxmox_template: "debian13-cloudinit"           # dit Debian 13 cloud-init template navn
+proxmox_bridge: "vmbr1"
+proxmox_default_vlan: 10
+
+# ---------- Netværks-defaults ----------
+gateway_default: 10.10.0.1
+dns_default:
+  - 10.10.0.11
+  - 10.10.0.12
+
+# ---------- phpIPAM ----------
+use_phpipam: false       # kan overrides pr. VM
+phpipam_server_url: "http://SEVA-IPAM01.seva-it.internal"
+phpipam_app_id: "ansible"
+phpipam_username: "ansible-ipam"
+phpipam_password: "CHANGEME"  # læg i Semaphore env
+phpipam_section: "seva"
+phpipam_subnet: "10.10.0.0/24"   # subnet hvor der skal findes IP
+
+# ---------- VM defaults ----------
+vm_memory_mb: 4096
+vm_cores: 2
+vm_disk_gb: 40
+vm_vlan: "{{ proxmox_default_vlan }}"
+vm_ip: ""                # tom = brug phpIPAM (hvis enabled) ellers DHCP
+vm_cidr: "/24"
+vm_gateway: ""           # tom = gateway_default
+vm_dns: []               # tom = dns_default
+
+# ---------- NTP ----------
+ntp_server: "10.10.0.11"
+
+# ---------- AD / realm ----------
+join_ad: false
+ad_domain: "seva-it.internal"
+ad_admin_user: "svc-ansible-join"   # service-user til join
+ad_admin_password: "CHANGEME"       # læg i Semaphore env/vault
+
+# Navnekonventioner til SSH/SUDO grupper i AD
+ad_ssh_group_prefix: "SYS-"
+ad_sudo_group_prefix: "SYS-"
