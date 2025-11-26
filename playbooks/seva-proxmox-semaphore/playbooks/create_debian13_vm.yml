@@ -1,0 +1,166 @@
+# playbooks/create_debian13_vm.yml
+---
+
+- name: "Create Debian 13 VM on Proxmox (cloud-init)"
+  hosts: localhost
+  gather_facts: false
+
+  vars:
+    # Disse værdier vil du typisk override pr. kørsel via Semaphore extra vars
+    vm_name: "debian13-test01"
+    vm_description: "Test VM created by Semaphore/Ansible"
+    vm_vlan: "{{ vm_vlan | default(proxmox_default_vlan) }}"
+    vm_gateway_final: "{{ (vm_gateway | default('')) | ternary(vm_gateway, gateway_default) }}"
+    vm_dns_final: "{{ (vm_dns | length > 0) | ternary(vm_dns, dns_default) }}"
+
+  tasks:
+    - name: "Bestem om vi bruger manuel IP, phpIPAM eller DHCP"
+    set_fact:
+      ip_mode: >-
+        {% if vm_ip | length > 0 %}
+        manual
+        {% elif use_phpipam | bool %}
+        phpipam
+        {% else %}
+        dhcp
+        {% endif %}
+
+    - name: "Hent ledig IP fra phpIPAM (hvis valgt)"
+      when: ip_mode == "phpipam"
+      block:
+        - name: "Get API token"
+          uri:
+            url: "{{ phpipam_server_url }}/api/{{ phpipam_app_id }}/user/"
+            method: POST
+            force_basic_auth: yes
+            user: "{{ phpipam_username }}"
+            password: "{{ phpipam_password }}"
+            validate_certs: false
+          register: phpipam_auth
+
+        - name: "Get first free IP from subnet"
+          uri:
+            url: "{{ phpipam_server_url }}/api/{{ phpipam_app_id }}/subnets/{{ phpipam_subnet | urlencode }}/first_free/"
+            method: GET
+            headers:
+              token: "{{ phpipam_auth.json.data.token }}"
+            validate_certs: false
+          register: phpipam_first_free
+
+        - name: "Set vm_ip from phpIPAM"
+          set_fact:
+            vm_ip_from_ipam: "{{ phpipam_first_free.json.data }}"
+            vm_ip: "{{ phpipam_first_free.json.data }}"
+
+        - name: "Reserve IP in phpIPAM"
+          codeaffen.phpipam.address:
+            server_url: "{{ phpipam_server_url }}"
+            username: "{{ phpipam_username }}"
+            password: "{{ phpipam_password }}"
+            app_id: "{{ phpipam_app_id }}"
+            section: "{{ phpipam_section }}"
+            subnet: "{{ phpipam_subnet }}"
+            ipaddress: "{{ vm_ip }}"
+            description: "{{ vm_name }}"
+            state: present
+            validate_certs: false
+
+    - name: "Byg ipconfig0 string til cloud-init"
+      set_fact:
+        ipconfig0: >-
+          {% if ip_mode == "dhcp" %}
+          dhcp
+          {% else %}
+          ip={{ vm_ip }}{{ vm_cidr }},gw={{ vm_gateway_final }}
+          {% endif %}
+
+    - name: "Opret/clone VM fra Debian 13 cloud-init template"
+      community.general.proxmox_kvm:
+        api_host: "{{ proxmox_api_host }}"
+        api_user: "{{ proxmox_api_user }}"
+        api_token_id: "{{ proxmox_api_token_id }}"
+        api_token_secret: "{{ proxmox_api_token_secret }}"
+        validate_certs: false
+
+        name: "{{ vm_name }}"
+        node: "{{ proxmox_node }}"
+        clone: "{{ proxmox_template }}"
+        full: true
+        storage: "{{ proxmox_storage }}"
+        memory: "{{ vm_memory_mb }}"
+        cores: "{{ vm_cores }}"
+        description: "{{ vm_description }}"
+
+        # Netværk: vmbr1 + VLAN
+        net:
+          net0: "virtio,bridge={{ proxmox_bridge }},tag={{ vm_vlan }}"
+
+        # Cloud-init net/IP
+        ipconfig:
+          ipconfig0: "{{ ipconfig0 }}"
+
+        # DNS
+        nameservers: "{{ vm_dns_final }}"
+
+        # Auto-start
+        autostart: true
+
+        state: present
+        # Lad Proxmox selv vælge næste frie VMID
+      register: proxmox_new_vm
+
+    - name: "Gem VMID fra API-respons"
+      set_fact:
+        new_vmid: "{{ proxmox_new_vm.vmid }}"
+
+    - name: "Start VM"
+      community.general.proxmox_kvm:
+        api_host: "{{ proxmox_api_host }}"
+        api_user: "{{ proxmox_api_user }}"
+        api_token_id: "{{ proxmox_api_token_id }}"
+        api_token_secret: "{{ proxmox_api_token_secret }}"
+        validate_certs: false
+
+        vmid: "{{ new_vmid }}"
+        node: "{{ proxmox_node }}"
+        state: started
+
+    - name: "Tilføj ny VM til inventory (kun hvis vi har statisk IP)"
+      when: ip_mode != "dhcp"
+      add_host:
+        name: "{{ vm_name }}"
+        ansible_host: "{{ vm_ip }}"
+        groups: ["new_vm"]
+
+    - name: "Vent på SSH på den nye VM (kun statisk IP)"
+      when: ip_mode != "dhcp"
+      wait_for:
+        host: "{{ vm_ip }}"
+        port: 22
+        timeout: 600
+        state: started
+
+    - name: "Info hvis DHCP er valgt"
+      when: ip_mode == "dhcp"
+      debug:
+        msg: >
+          VM er oprettet med DHCP.
+          Der køres IKKE post_install / AD-join automatisk, fordi vi ikke kender IP.
+          Tilføj manuelt i inventory for efterfølgende playbooks.
+
+# ---------- Post-install på den nye VM ----------
+- name: "Post-install på Debian 13 VM"
+  hosts: new_vm
+  become: true
+  gather_facts: true
+  roles:
+    - role: post_install
+
+# ---------- Join AD (valgfrit) ----------
+- name: "Join Debian 13 VM til Windows AD (realm)"
+  hosts: new_vm
+  become: true
+  gather_facts: true
+  when: join_ad | bool
+  roles:
+    - role: join_ad
