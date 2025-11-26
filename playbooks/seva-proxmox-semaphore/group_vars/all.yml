@@ -46,5 +46,5 @@ ad_admin_user: "svc-ansible-join"   # service-user til join
 ad_admin_password: "CHANGEME"       # læg i Semaphore env/vault
 
 # Navnekonventioner til SSH/SUDO grupper i AD
-ad_ssh_group_prefix: "SYS-"
-ad_sudo_group_prefix: "SYS-"
+ad_ssh_group_prefix: "SYS"
+ad_sudo_group_prefix: "SYS"
