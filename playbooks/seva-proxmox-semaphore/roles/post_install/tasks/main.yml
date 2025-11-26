@@ -1,0 +1,42 @@
+# roles/post_install/tasks/main.yml
+---
+
+- name: "Opdater APT cache"
+  apt:
+    update_cache: yes
+    cache_valid_time: 3600
+
+- name: "Installer basale pakker (ssh, sudo, nettools, chrony)"
+  apt:
+    name:
+      - openssh-server
+      - sudo
+      - net-tools
+      - chrony
+    state: present
+
+- name: "Sæt NTP server til AD ({{ ntp_server }})"
+  lineinfile:
+    path: /etc/chrony/chrony.conf
+    regexp: '^server '
+    line: "server {{ ntp_server }} iburst"
+    state: present
+  notify: Restart chronyd
+
+- name: "Sørg for at SSH kører"
+  service:
+    name: ssh
+    state: started
+    enabled: yes
+
+- name: "Sørg for at chrony kører"
+  service:
+    name: chrony
+    state: started
+    enabled: yes
+
+# Handlers
+- name: Restart chronyd
+  service:
+    name: chrony
+    state: restarted
