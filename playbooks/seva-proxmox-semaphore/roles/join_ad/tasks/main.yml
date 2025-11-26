@@ -1,0 +1,95 @@
+# roles/join_ad/tasks/main.yml
+---
+
+- name: "Installer pakker til AD-join (realmd, sssd, samba, oddjob...)"
+  apt:
+    name:
+      - realmd
+      - sssd
+      - sssd-tools
+      - libnss-sss
+      - libpam-sss
+      - adcli
+      - samba-common-bin
+      - oddjob
+      - oddjob-mkhomedir
+      - packagekit
+    state: present
+    update_cache: yes
+
+- name: "Tjek DNS (resolv.conf) – debug"
+  command: cat /etc/resolv.conf
+  register: resolv_conf
+  changed_when: false
+
+- debug:
+    var: resolv_conf.stdout_lines
+
+- name: "realm discover {{ ad_domain }}"
+  command: "realm discover {{ ad_domain }}"
+  register: realm_discover
+  changed_when: false
+
+- debug:
+    var: realm_discover.stdout_lines
+
+- name: "Join AD-domain {{ ad_domain }}"
+  command: >
+    realm join {{ ad_domain }}
+    --membership-software=samba
+    --user={{ ad_admin_user }}
+  register: realm_join
+  args:
+    stdin: "{{ ad_admin_password }}"
+  no_log: true
+
+- debug:
+    var: realm_join.stdout_lines
+
+# /etc/pam.d/common-session -> pam_mkhomedir
+- name: "Aktiver pam_mkhomedir (auto home dir)"
+  lineinfile:
+    path: /etc/pam.d/common-session
+    insertafter: EOF
+    line: "session optional        pam_mkhomedir.so skel=/etc/skel umask=077"
+
+# /etc/sssd/sssd.conf -> use_fully_qualified_names = False
+- name: "Sæt use_fully_qualified_names = False i sssd.conf"
+  replace:
+    path: /etc/sssd/sssd.conf
+    regexp: '^use_fully_qualified_names *= *True'
+    replace: 'use_fully_qualified_names = False'
+
+- name: "Genstart sssd"
+  service:
+    name: sssd
+    state: restarted
+
+# realm deny/permit
+- name: "Blockér alle SSH brugere via realm"
+  command: "realm deny --all"
+  register: realm_deny
+  changed_when: "'denied' in realm_deny.stdout or 'No rules match' not in realm_deny.stderr"
+
+- name: "Udregn gruppeoplevelse (hostname, domæne)"
+  set_fact:
+    server_hostname_short: "{{ ansible_hostname.split('.')[0] }}"
+    domain_upper: "{{ ad_domain | upper }}"
+
+- name: "Sæt SSH group navn"
+  set_fact:
+    ssh_group: "{{ ad_ssh_group_prefix }}-{{ server_hostname_short }}-SSH@{{ domain_upper }}"
+
+- name: "Permit SSH for {{ ssh_group }}"
+  command: "realm permit -g {{ ssh_group }}"
+
+- name: "Sæt SUDO group navn"
+  set_fact:
+    sudo_group: "{{ ad_sudo_group_prefix }}-{{ server_hostname_short }}-SUDO@{{ domain_upper }}"
+
+- name: "Tilføj sudoers-linje for {{ sudo_group }}"
+  lineinfile:
+    path: /etc/sudoers
+    line: "%{{ sudo_group }} ALL=(ALL) ALL"
+    state: present
+    validate: "/usr/sbin/visudo -cf %s"
