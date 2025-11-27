@@ -1,5 +1,5 @@
 ---
-- name: Test Proxmox API Connection
+- name: Test Proxmox API connection
   hosts: local
   gather_facts: no
 
@@ -11,22 +11,23 @@
 
   tasks:
 
-    - name: Test Proxmox API via Python lookup
-      set_fact:
-        pve_nodes: >-
-          {{ lookup('pipe', 
-          'bash -c "python3 << EOF
+    - name: Call Proxmox API using Python
+      shell: |
+        python3 << 'EOF'
 from proxmoxer import ProxmoxAPI
+import json
 p = ProxmoxAPI(
-    \'' + pve_host + '\',
-    user=\'' + pve_user + '\',
-    token_name=\'' + pve_token_name + '\',
-    token_value=\'' + pve_token_value + '\',
+    "{{ pve_host }}",
+    user="{{ pve_user }}",
+    token_name="{{ pve_token_name }}",
+    token_value="{{ pve_token_value }}",
     verify_ssl=False
 )
-print([n[\"node\"] for n in p.nodes.get()])
-EOF"') }}
+nodes = [n["node"] for n in p.nodes.get()]
+print(json.dumps(nodes))
+EOF
+      register: pve_python_output
 
-    - name: Print Proxmox nodes
+    - name: Show Proxmox nodes
       debug:
-        msg: "Cluster nodes: {{ pve_nodes }}"
+        msg: "Cluster nodes: {{ pve_python_output.stdout }}"
