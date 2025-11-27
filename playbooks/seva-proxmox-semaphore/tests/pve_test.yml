@@ -1,26 +1,32 @@
 ---
-- name: Test Proxmox API connection
+- name: Test Proxmox API Connection
   hosts: local
-  gather_facts: false
+  gather_facts: no
 
   vars:
-    api_host: "{{ pve_host }}"
-    api_user: "{{ pve_user }}"
-    api_token_name: "{{ pve_token_name }}"
-    api_token_value: "{{ pve_token_value }}"
+    pve_host: "{{ pve_host }}"
+    pve_user: "{{ pve_user }}"
+    pve_token_name: "{{ pve_token_name }}"
+    pve_token_value: "{{ pve_token_value }}"
 
   tasks:
-    - name: Get Proxmox nodes
-      community.general.proxmox:
-        api_user: "{{ api_user }}"
-        api_token_id: "{{ api_token_name }}"
-        api_token_secret: "{{ api_token_value }}"
-        api_host: "{{ api_host }}"
-        api_port: 8006
-        validate_certs: false
-        state: info
-      register: pve_result
 
-    - name: Print nodes
+    - name: Test Proxmox API via Python lookup
+      set_fact:
+        pve_nodes: >-
+          {{ lookup('pipe', 
+          'bash -c "python3 << EOF
+from proxmoxer import ProxmoxAPI
+p = ProxmoxAPI(
+    \'' + pve_host + '\',
+    user=\'' + pve_user + '\',
+    token_name=\'' + pve_token_name + '\',
+    token_value=\'' + pve_token_value + '\',
+    verify_ssl=False
+)
+print([n[\"node\"] for n in p.nodes.get()])
+EOF"') }}
+
+    - name: Print Proxmox nodes
       debug:
-        var: pve_result
+        msg: "Cluster nodes: {{ pve_nodes }}"
