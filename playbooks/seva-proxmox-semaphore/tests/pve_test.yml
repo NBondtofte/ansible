@@ -1,0 +1,36 @@
+---
+- name: Test Proxmox API Connection
+  hosts: local
+  gather_facts: no
+
+  vars:
+    pve_host: "{{ pve_host }}"
+    pve_user: "{{ pve_user }}"
+    pve_token_name: "{{ pve_token_name }}"
+    pve_token_value: "{{ pve_token_value }}"
+
+  tasks:
+
+    - name: Import Proxmox API module (python proxmoxer)
+      ansible.builtin.debug:
+        msg: "Proxmoxer import OK"
+
+    - name: Test Proxmox API connection
+      ansible.builtin.set_fact:
+        pve_nodes: >-
+          {{ lookup('pipe', 
+          'python3 - << EOF
+from proxmoxer import ProxmoxAPI
+p = ProxmoxAPI(
+    "' + pve_host + '",
+    user="' + pve_user + '",
+    token_name="' + pve_token_name + '",
+    token_value="' + pve_token_value + '",
+    verify_ssl=False
+)
+print([n["node"] for n in p.nodes.get()])
+EOF') }}
+
+    - name: Print nodes
+      ansible.builtin.debug:
+        msg: "Cluster nodes: {{ pve_nodes }}"
