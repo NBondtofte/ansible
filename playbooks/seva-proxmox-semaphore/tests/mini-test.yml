@@ -1,0 +1,6 @@
+---
+- hosts: local
+  gather_facts: no
+  tasks:
+    - debug:
+        msg: "Python path: {{ ansible_playbook_python }}"
