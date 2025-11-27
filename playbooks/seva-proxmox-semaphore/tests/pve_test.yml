@@ -13,7 +13,7 @@
 
     - name: Call Proxmox API using Python
       shell: |
-        python3 << 'EOF'
+        /opt/ansible-venv/bin/python3 << 'EOF'
         from proxmoxer import ProxmoxAPI
         import json
 
