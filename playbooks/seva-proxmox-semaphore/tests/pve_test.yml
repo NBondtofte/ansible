@@ -14,18 +14,20 @@
     - name: Call Proxmox API using Python
       shell: |
         python3 << 'EOF'
-from proxmoxer import ProxmoxAPI
-import json
-p = ProxmoxAPI(
-    "{{ pve_host }}",
-    user="{{ pve_user }}",
-    token_name="{{ pve_token_name }}",
-    token_value="{{ pve_token_value }}",
-    verify_ssl=False
-)
-nodes = [n["node"] for n in p.nodes.get()]
-print(json.dumps(nodes))
-EOF
+        from proxmoxer import ProxmoxAPI
+        import json
+
+        p = ProxmoxAPI(
+            "{{ pve_host }}",
+            user="{{ pve_user }}",
+            token_name="{{ pve_token_name }}",
+            token_value="{{ pve_token_value }}",
+            verify_ssl=False
+        )
+
+        nodes = [n["node"] for n in p.nodes.get()]
+        print(json.dumps(nodes))
+        EOF
       register: pve_python_output
 
     - name: Show Proxmox nodes
