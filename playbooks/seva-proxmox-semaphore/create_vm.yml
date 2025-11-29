@@ -1,111 +1,115 @@
 ---
-- name: Create new Proxmox VM (via Semaphore)
+- name: Create new Proxmox VM (REST API version)
   hosts: localhost
   gather_facts: no
 
   vars:
-    # API credentials from Semaphore
     api_host: "{{ pve_host }}"
     api_user: "{{ pve_user }}"
-    api_token_id: "{{ pve_user }}!{{ pve_token_name }}"
-    api_token_secret: "{{ pve_token_value }}"
+    api_token_name: "{{ pve_token_name }}"
+    api_token_value: "{{ pve_token_value }}"
     api_node: "{{ pve_node }}"
 
-    # VM defaults from create-vm variable group
+    # VM defaults from your Variable Group
     vmname: "{{ vm_name }}"
     memory_mb: "{{ vm_memory }}"
     cores: "{{ vm_cores }}"
     disk_gb: "{{ vm_disk_gb }}"
     bridge: "{{ vm_bridge }}"
+    storage: "vm_storage"
+
+    api_token_header: "PVEAPIToken={{ api_user }}!{{ api_token_name }}={{ api_token_value }}"
 
   tasks:
 
     #################################################################
-    # 1. Get next free VMID (via REST API, works everywhere)
+    # 1. Get next VMID
     #################################################################
-    - name: Get next free VMID (REST API)
+    - name: Get next free VMID
       uri:
         url: "https://{{ api_host }}:8006/api2/json/cluster/nextid"
         method: GET
-        validate_certs: false
+        validate_certs: no
         headers:
-          Authorization: "PVEAPIToken={{ api_user }}!{{ pve_token_name }}={{ api_token_value }}"
-      register: vmid_response
+          Authorization: "{{ api_token_header }}"
+      register: nextid_result
 
-    - name: Extract VMID
+    - name: Set VMID
       set_fact:
-        new_vmid: "{{ vmid_response.json.data }}"
+        new_vmid: "{{ nextid_result.json.data }}"
 
     #################################################################
-    # 2. Debug values
+    # 2. Debug
     #################################################################
-    - name: Debug planned deployment settings
+    - name: Debug planned creation
       debug:
         msg:
           vmid: "{{ new_vmid }}"
-          vmname: "{{ vmname }}"
+          name: "{{ vmname }}"
+          memory: "{{ memory_mb }}"
           cores: "{{ cores }}"
-          memory_mb: "{{ memory_mb }}"
-          disk_gb: "{{ disk_gb }}"
+          disk: "{{ disk_gb }}"
           bridge: "{{ bridge }}"
-          storage: "vm_storage"
+          storage: "{{ storage }}"
           node: "{{ api_node }}"
 
     #################################################################
-    # 3. Create VM shell
+    # 3. Create VM shell (POST /nodes/{node}/qemu)
     #################################################################
     - name: Create VM shell
-      community.proxmox.pve_kvm:
-        api_host: "{{ api_host }}"
-        api_user: "{{ api_user }}"
-        api_token_id: "{{ api_token_id }}"
-        api_token_secret: "{{ api_token_secret }}"
-        validate_certs: false
-
-        node: "{{ api_node }}"
-        vmid: "{{ new_vmid }}"
-        name: "{{ vmname }}"
-        memory: "{{ memory_mb }}"
-        cores: "{{ cores }}"
-        sockets: 1
-        machine: q35
-        ostype: l26
-        scsihw: virtio-scsi-pci
-        state: present
+      uri:
+        url: "https://{{ api_host }}:8006/api2/json/nodes/{{ api_node }}/qemu"
+        method: POST
+        validate_certs: no
+        headers:
+          Authorization: "{{ api_token_header }}"
+        body_format: form-urlencoded
+        body:
+          vmid: "{{ new_vmid }}"
+          name: "{{ vmname }}"
+          memory: "{{ memory_mb }}"
+          cores: "{{ cores }}"
+          sockets: 1
+          ostype: l26
+          scsihw: virtio-scsi-pci
+          machine: q35
+      register: create_shell
 
     #################################################################
-    # 4. Add SCSI Disk
+    # 4. Add disk (POST /qemu/{vmid}/config)
     #################################################################
-    - name: Add main disk
-      community.proxmox.pve_disk:
-        api_host: "{{ api_host }}"
-        api_user: "{{ api_user }}"
-        api_token_id: "{{ api_token_id }}"
-        api_token_secret: "{{ api_token_secret }}"
-        validate_certs: false
-
-        node: "{{ api_node }}"
-        vmid: "{{ new_vmid }}"
-        disk: "scsi0"
-        size: "{{ disk_gb }}G"
-        storage: "vm_storage"
-        type: scsi
-        state: present
+    - name: Add disk
+      uri:
+        url: "https://{{ api_host }}:8006/api2/json/nodes/{{ api_node }}/qemu/{{ new_vmid }}/config"
+        method: POST
+        validate_certs: no
+        headers:
+          Authorization: "{{ api_token_header }}"
+        body_format: form-urlencoded
+        body:
+          scsi0: "{{ storage }}:{{ disk_gb }}G"
 
     #################################################################
     # 5. Add NIC
     #################################################################
-    - name: Add network interface
-      community.proxmox.pve_nic:
-        api_host: "{{ api_host }}"
-        api_user: "{{ api_user }}"
-        api_token_id: "{{ api_token_id }}"
-        api_token_secret: "{{ api_token_secret }}"
-        validate_certs: false
+    - name: Add NIC
+      uri:
+        url: "https://{{ api_host }}:8006/api2/json/nodes/{{ api_node }}/qemu/{{ new_vmid }}/config"
+        method: POST
+        validate_certs: no
+        headers:
+          Authorization: "{{ api_token_header }}"
+        body_format: form-urlencoded
+        body:
+          net0: "virtio,bridge={{ bridge }}"
 
-        node: "{{ api_node }}"
-        vmid: "{{ new_vmid }}"
-        net: "net0"
-        model: virtio
-        bridge: "{{ bridge }}"
-        state: present
+    #################################################################
+    # 6. Start VM
+    #################################################################
+    - name: Start VM
+      uri:
+        url: "https://{{ api_host }}:8006/api2/json/nodes/{{ api_node }}/qemu/{{ new_vmid }}/status/start"
+        method: POST
+        validate_certs: no
+        headers:
+          Authorization: "{{ api_token_header }}"
