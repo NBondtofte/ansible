@@ -1,64 +1,95 @@
 ---
 - name: Create new Proxmox VM (via Semaphore)
   hosts: local
-  gather_facts: false
+  gather_facts: no
 
-  #
-  # Her laver vi en "fusion" af:
-  # - defaults fra Variable Group (proxmox-create-vm)
-  # - værdier fra Semaphore Survey (hvis du skriver noget)
-  #
-  # Storage er altid vm_storage som du ønskede.
-  #
   vars:
-    fixed_pve_storage: "vm_storage"
+    api_host: "{{ pve_host }}"
+    api_user: "{{ pve_user }}"
+    api_token_id: "{{ pve_user }}!{{ pve_token_name }}"
+    api_token_secret: "{{ pve_token_value }}"
 
-    merged_vm_name: "{{ survey_vm_name | default(vm_name) }}"
-    merged_vm_cores: "{{ (survey_vm_cores | default(vm_cores)) | int }}"
-    merged_vm_memory: "{{ (survey_vm_memory | default(vm_memory)) | int }}"
-    merged_vm_disk_gb: "{{ survey_vm_disk_gb | default(vm_disk_gb) }}"
-    merged_vm_bridge: "{{ survey_vm_bridge | default(vm_bridge) }}"
+    vmid_cmd: "pvesh get /cluster/nextid"
+    next_vmid: "{{ lookup('ansible.builtin.pipe', vmid_cmd) }}"
+
+    final_vm_name: "{{ survey_vm_name | default(vm_name) }}"
+    final_cores: "{{ survey_cpu_cores | default(vm_cores) }}"
+    final_memory_mb: "{{ survey_ram_mb | default(vm_memory) }}"
+    final_disk_gb: "{{ survey_disk_gb | default(vm_disk_gb) }}"
+    final_bridge: "{{ survey_bridge | default(vm_bridge) }}"
+    final_node: "{{ pve_node }}"
+    final_storage: "vm_storage"
 
   tasks:
 
     - name: Show parameters that will be used
       ansible.builtin.debug:
         msg:
-          api_host: "{{ pve_host }}"
-          node: "{{ pve_node }}"
-          vm_name: "{{ merged_vm_name }}"
-          cores: "{{ merged_vm_cores }}"
-          memory_mb: "{{ merged_vm_memory }}"
-          disk_size: "{{ merged_vm_disk_gb }}"
-          bridge: "{{ merged_vm_bridge }}"
-          storage: "{{ fixed_pve_storage }}"
+          api_host: "{{ api_host }}"
+          node: "{{ final_node }}"
+          vmid: "{{ next_vmid }}"
+          vm_name: "{{ final_vm_name }}"
+          cores: "{{ final_cores }}"
+          memory: "{{ final_memory_mb }}"
+          disk: "{{ final_disk_gb }}"
+          bridge: "{{ final_bridge }}"
+          storage: "{{ final_storage }}"
 
-    - name: Create / update VM on Proxmox
+    - name: Create VM base definition
       community.general.proxmox_kvm:
-        # API auth via token
-        api_host: "{{ pve_host }}"
-        api_user: "{{ pve_user }}"
-        api_token_id: "{{ pve_user }}!{{ pve_token_name }}"
-        api_token_secret: "{{ pve_token_value }}"
-        validate_certs: false
+        api_host: "{{ api_host }}"
+        api_user: "{{ api_user }}"
+        api_token_id: "{{ api_token_id }}"
+        api_token_secret: "{{ api_token_secret }}"
+        validate_certs: no
 
-        # Hvor VM'en oprettes
-        node: "{{ pve_node }}"
-        name: "{{ merged_vm_name }}"
+        node: "{{ final_node }}"
+        vmid: "{{ next_vmid }}"
+        name: "{{ final_vm_name }}"
+        state: present
+        cores: "{{ final_cores }}"
+        memory: "{{ final_memory_mb }}"
+        scsihw: virtio-scsi-single
+        bootdisk: scsi0
+
+    - name: Attach system disk
+      community.general.proxmox_disk:
+        api_host: "{{ api_host }}"
+        api_user: "{{ api_user }}"
+        api_token_id: "{{ api_token_id }}"
+        api_token_secret: "{{ api_token_secret }}"
+        validate_certs: no
+
+        vmid: "{{ next_vmid }}"
+        node: "{{ final_node }}"
+        disk: "scsi0"
+        size: "{{ final_disk_gb }}"
+        storage: "{{ final_storage }}"
         state: present
 
-        # Hardware
-        cores: "{{ merged_vm_cores }}"
-        memory: "{{ merged_vm_memory }}"
-        sockets: 1
-        ostype: l26
+    - name: Configure network interface
+      community.general.proxmox_nic:
+        api_host: "{{ api_host }}"
+        api_user: "{{ api_user }}"
+        api_token_id: "{{ api_token_id }}"
+        api_token_secret: "{{ api_token_secret }}"
+        validate_certs: no
+        
+        vmid: "{{ next_vmid }}"
+        node: "{{ final_node }}"
+        interface: net0
+        model: virtio
+        bridge: "{{ final_bridge }}"
+        state: present
 
-        # Disk & net
-        scsihw: virtio-scsi-pci
-        scsi0: "{{ fixed_pve_storage }}:{{ merged_vm_disk_gb }}"
-        net0: "virtio,bridge={{ merged_vm_bridge }}"
+    - name: Start VM
+      community.general.proxmox_kvm:
+        api_host: "{{ api_host }}"
+        api_user: "{{ api_user }}"
+        api_token_id: "{{ api_token_id }}"
+        api_token_secret: "{{ api_token_secret }}"
+        validate_certs: no
 
-        # Adfærd
-        onboot: true
-        agent: 1
-        boot: c
+        vmid: "{{ next_vmid }}"
+        node: "{{ final_node }}"
+        state: started
