@@ -4,24 +4,44 @@
   gather_facts: no
 
   vars:
+    # API
     api_host: "{{ pve_host }}"
     api_user: "{{ pve_user }}"
     api_token_id: "{{ pve_user }}!{{ pve_token_name }}"
     api_token_secret: "{{ pve_token_value }}"
 
-    vmid_cmd: "pvesh get /cluster/nextid"
-    next_vmid: "{{ lookup('ansible.builtin.pipe', vmid_cmd) }}"
-
+    # Defaults kan overrides af Survey
     final_vm_name: "{{ survey_vm_name | default(vm_name) }}"
     final_cores: "{{ survey_cpu_cores | default(vm_cores) }}"
     final_memory_mb: "{{ survey_ram_mb | default(vm_memory) }}"
     final_disk_gb: "{{ survey_disk_gb | default(vm_disk_gb) }}"
     final_bridge: "{{ survey_bridge | default(vm_bridge) }}"
+
+    # Fast fixed values
     final_node: "{{ pve_node }}"
-    final_storage: "vm_storage"
+    final_storage: "{{ pve_storage }}"
 
   tasks:
+    ###########################################################################
+    # 1. Hent næste VMID fra Proxmox API
+    ###########################################################################
+    - name: Get next free VMID from Proxmox API
+      community.general.proxmox:
+        api_host: "{{ api_host }}"
+        api_user: "{{ api_user }}"
+        api_token_id: "{{ api_token_id }}"
+        api_token_secret: "{{ api_token_secret }}"
+        validate_certs: no
+        endpoint: "/cluster/nextid"
+      register: vmid_result
 
+    - name: Set fact next_vmid
+      ansible.builtin.set_fact:
+        next_vmid: "{{ vmid_result.json.data }}"
+
+    ###########################################################################
+    # 2. Debug – vis hvad der bliver brugt
+    ###########################################################################
     - name: Show parameters that will be used
       ansible.builtin.debug:
         msg:
@@ -35,7 +55,10 @@
           bridge: "{{ final_bridge }}"
           storage: "{{ final_storage }}"
 
-    - name: Create VM base definition
+    ###########################################################################
+    # 3. Opret selve VM'en
+    ###########################################################################
+    - name: Create VM shell
       community.general.proxmox_kvm:
         api_host: "{{ api_host }}"
         api_user: "{{ api_user }}"
@@ -43,16 +66,25 @@
         api_token_secret: "{{ api_token_secret }}"
         validate_certs: no
 
-        node: "{{ final_node }}"
         vmid: "{{ next_vmid }}"
+        node: "{{ final_node }}"
         name: "{{ final_vm_name }}"
-        state: present
-        cores: "{{ final_cores }}"
         memory: "{{ final_memory_mb }}"
+        cores: "{{ final_cores }}"
+        sockets: 1
+        cpu: host
+        kvm: yes
+        onboot: yes
+        ostype: l26
         scsihw: virtio-scsi-single
-        bootdisk: scsi0
+        boot: "order=scsi0;net0"
 
-    - name: Attach system disk
+        state: present
+
+    ###########################################################################
+    # 4. Tilføj disk
+    ###########################################################################
+    - name: Create disk device
       community.general.proxmox_disk:
         api_host: "{{ api_host }}"
         api_user: "{{ api_user }}"
@@ -65,31 +97,18 @@
         disk: "scsi0"
         size: "{{ final_disk_gb }}"
         storage: "{{ final_storage }}"
-        state: present
+        type: scsi
 
-    - name: Configure network interface
+    ###########################################################################
+    # 5. Tilføj netværk
+    ###########################################################################
+    - name: Create network device
       community.general.proxmox_nic:
         api_host: "{{ api_host }}"
         api_user: "{{ api_user }}"
         api_token_id: "{{ api_token_id }}"
         api_token_secret: "{{ api_token_secret }}"
         validate_certs: no
-        
-        vmid: "{{ next_vmid }}"
-        node: "{{ final_node }}"
-        interface: net0
-        model: virtio
-        bridge: "{{ final_bridge }}"
-        state: present
-
-    - name: Start VM
-      community.general.proxmox_kvm:
-        api_host: "{{ api_host }}"
-        api_user: "{{ api_user }}"
-        api_token_id: "{{ api_token_id }}"
-        api_token_secret: "{{ api_token_secret }}"
-        validate_certs: no
 
         vmid: "{{ next_vmid }}"
-        node: "{{ final_node }}"
-        state: started
+        node: "{{ final_node_
