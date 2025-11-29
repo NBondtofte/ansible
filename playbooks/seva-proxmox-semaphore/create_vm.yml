@@ -4,14 +4,14 @@
   gather_facts: false
 
   vars:
-    # AUTH
+    # AUTH – kommer fra Semaphore Variable Group
     api_host: "{{ pve_host }}"
     api_user: "{{ pve_user }}"
     api_token_name: "{{ pve_token_name }}"
     api_token_value: "{{ pve_token_value }}"
     api_token_header: "PVEAPIToken={{ api_user }}!{{ api_token_name }}={{ api_token_value }}"
 
-    # VM SETTINGS
+    # Survey / defaults merge
     vm_name_final: "{{ survey_vm_name | default(vm_name) }}"
     vm_cores_final: "{{ survey_vm_cores | default(vm_cores) }}"
     vm_memory_final: "{{ survey_vm_memory | default(vm_memory) }}"
@@ -39,21 +39,18 @@
           override: "{{ vmid_override | default('none') }}"
 
     #################################################################
-    # 2. VMID handling (FULL SAFE VERSION)
+    # 2. VMID handling (final safe version)
     #################################################################
 
-    # Ensure override exists as an empty string if not defined
     - name: Normalize override value
       set_fact:
-        vmid_override_value: "{{ vmid_override | default('') }}"
+        vmid_override_value: "{{ vmid_override | default('') | string }}"
 
-    # If override is not empty → use it
-    - name: Apply override VMID
+    - name: Apply override VMID if present
       set_fact:
-        new_vmid: "{{ vmid_override_value }}"
-      when: vmid_override_value | length > 0
+        new_vmid: "{{ vmid_override_value | trim }}"
+      when: (vmid_override_value | trim) != ""
 
-    # If override is empty → call Proxmox API
     - name: Get next free VMID
       uri:
         url: "https://{{ api_host }}:8006/api2/json/cluster/nextid"
@@ -62,20 +59,19 @@
         headers:
           Authorization: "{{ api_token_header }}"
       register: nextid_result
-      when: vmid_override_value | length == 0
+      when: (vmid_override_value | trim) == ""
 
-    # Set VMID from API
     - name: Set auto VMID
       set_fact:
         new_vmid: "{{ nextid_result.json.data }}"
-      when: vmid_override_value | length == 0
+      when: (vmid_override_value | trim) == ""
 
     - name: Debug final VMID
       debug:
         msg: "FINAL VMID = {{ new_vmid }}"
 
     #################################################################
-    # 3. Create VM shell
+    # 3. Create empty VM
     #################################################################
     - name: Create VM shell
       uri:
@@ -94,12 +90,12 @@
           ostype: l26
           agent: 1
           balloon: 0
-      register: create_vm
+      register: vm_create
 
     #################################################################
     # 4. Add disk
     #################################################################
-    - name: Add VM disk
+    - name: Add disk
       uri:
         url: "https://{{ api_host }}:8006/api2/json/nodes/{{ vm_node_final }}/qemu/{{ new_vmid }}/config"
         method: PUT
@@ -109,12 +105,12 @@
         body_format: form-urlencoded
         body:
           scsi0: "{{ vm_storage_final }}:{{ vm_disk_final }}G"
-      register: disk_result
+      register: disk_add
 
     #################################################################
     # 5. Add network
     #################################################################
-    - name: Add network interface
+    - name: Add NIC
       uri:
         url: "https://{{ api_host }}:8006/api2/json/nodes/{{ vm_node_final }}/qemu/{{ new_vmid }}/config"
         method: PUT
@@ -124,16 +120,15 @@
         body_format: form-urlencoded
         body:
           net0: "virtio,bridge={{ vm_bridge_final }}"
-      register: net_result
+      register: net_add
 
     #################################################################
-    # 6. Output
+    # 6. Finish
     #################################################################
-    - name: VM created successfully
+    - name: Done
       debug:
         msg:
           vmid: "{{ new_vmid }}"
           name: "{{ vm_name_final }}"
           node: "{{ vm_node_final }}"
           storage: "{{ vm_storage_final }}"
-          bridge: "{{ vm_bridge_final }}"
