@@ -1,39 +1,58 @@
 ---
 - name: Create new Proxmox VM (REST API)
-  hosts: localhost
-  gather_facts: no
-  connection: local
+  hosts: local
+  gather_facts: false
 
   vars:
+    #############################################################
+    # TOKEN AUTH
+    #############################################################
     api_host: "{{ pve_host }}"
-    api_user: "{{ pve_user }}"
-    api_token_name: "{{ pve_token_name }}"
-    api_token_value: "{{ pve_token_value }}"
+    api_user: "{{ pve_user }}"              # fx: ansible@pve
+    api_token_name: "{{ pve_token_name }}"   # fx: ansible-token
+    api_token_value: "{{ pve_token_value }}" # SECRET fra Semaphore
+
     api_token_header: "PVEAPIToken={{ api_user }}!{{ api_token_name }}={{ api_token_value }}"
 
-    final_vm_name: "{{ survey_vm_name | default(vm_name) }}"
-    final_memory_mb: "{{ survey_memory_mb | default(vm_memory) }}"
-    final_cores: "{{ survey_cores | default(vm_cores) }}"
-    final_disk_gb: "{{ survey_disk_gb | default(vm_disk_gb) }}"
-    final_bridge: "{{ survey_bridge | default(vm_bridge) }}"
-    fixed_pve_storage: "vm_storage"
+    #############################################################
+    # VM SETTINGS – defaults hvis ikke Survey udfylder noget
+    #############################################################
+    vm_name_final: "{{ survey_vm_name | default(vm_name) }}"
+    vm_cores_final: "{{ survey_vm_cores | default(vm_cores) }}"
+    vm_memory_final: "{{ survey_vm_memory | default(vm_memory) }}"
+    vm_disk_final: "{{ survey_vm_disk | default(vm_disk_gb) }}"
+    vm_bridge_final: "{{ survey_vm_bridge | default(vm_bridge) }}"
+    vm_node_final: "{{ pve_node }}"
+    vm_storage_final: "vm_storage"
 
   tasks:
 
     #################################################################
-    # 1. VMID handling
+    # 1. Debug input
+    #################################################################
+    - name: Show parameters that will be used
+    <|start_of_focus|>
+      debug:
+        msg:
+          host: "{{ api_host }}"
+          name: "{{ vm_name_final }}"
+          cores: "{{ vm_cores_final }}"
+          memory: "{{ vm_memory_final }}"
+          disk: "{{ vm_disk_final }}"
+          bridge: "{{ vm_bridge_final }}"
+          node: "{{ vm_node_final }}"
+          storage: "{{ vm_storage_final }}"
+    #################################################################
+    # 2. VMID handling (robust version)
     #################################################################
 
-    - name: Debug override VMID
-      debug:
-        msg: "VMID override = {{ vmid_override }}"
-      when: vmid_override is defined and vmid_override != ""
-
-    - name: Apply override VMID
+    # Hvis override er sat og ikke tom → brug den
+    - name: Use override VMID if provided
       set_fact:
         new_vmid: "{{ vmid_override }}"
-      when: vmid_override is defined and vmid_override != ""
+      when: vmid_override is defined and vmid_override | string | length > 0
 
+    # Hvis override ikke bruges → hent nextid
     - name: Get next free VMID
       uri:
         url: "https://{{ api_host }}:8006/api2/json/cluster/nextid"
@@ -44,95 +63,79 @@
       register: nextid_result
       when: new_vmid is not defined
 
-    - name: Set auto vmid
+    # Hvis vi stadig ikke har VMID → tag nextid
+    - name: Set VMID from nextid_result
       set_fact:
         new_vmid: "{{ nextid_result.json.data }}"
       when: new_vmid is not defined
 
-    - name: Debug vmid
+    - name: Debug final VMID
       debug:
-        msg: "Using VMID {{ new_vmid }}"
+        msg: "Using VMID: {{ new_vmid }}"
 
     #################################################################
-    # 2. Create empty VM shell
+    # 3. Create VM shell
     #################################################################
-
     - name: Create VM shell
       uri:
-        url: "https://{{ api_host }}:8006/api2/json/nodes/{{ pve_node }}/qemu"
+        url: "https://{{ api_host }}:8006/api2/json/nodes/{{ vm_node_final }}/qemu"
         method: POST
         validate_certs: no
-        body_format: form-urlencoded
         headers:
           Authorization: "{{ api_token_header }}"
+        body_format: form-urlencoded
         body:
           vmid: "{{ new_vmid }}"
-          name: "{{ final_vm_name }}"
-          memory: "{{ final_memory_mb }}"
-          cores: "{{ final_cores }}"
-          sockets: 1
-          ostype: "l26"
-          scsihw: "virtio-scsi-pci"
-          machine: "q35"
-          kvm: 1
-      register: vm_shell
-
-    - name: Show VM shell result
-      debug:
-        msg: "{{ vm_shell.status }}"
+          name: "{{ vm_name_final }}"
+          cores: "{{ vm_cores_final }}"
+          memory: "{{ vm_memory_final }}"
+          scsihw: virtio-scsi-pci
+          ostype: l26
+          agent: 1
+          balloon: 0
+      register: create_vm
+      ignore_errors: false
 
     #################################################################
-    # 3. Create disk
+    # 4. Add disk
     #################################################################
-
-    - name: Create disk
+    - name: Add VM disk
       uri:
-        url: "https://{{ api_host }}:8006/api2/json/nodes/{{ pve_node }}/qemu/{{ new_vmid }}/config"
+        url: "https://{{ api_host }}:8006/api2/json/nodes/{{ vm_node_final }}/qemu/{{ new_vmid }}/config"
         method: PUT
         validate_certs: no
-        body_format: form-urlencoded
         headers:
           Authorization: "{{ api_token_header }}"
+        body_format: form-urlencoded
         body:
-          scsi0: "{{ fixed_pve_storage }}:{{ final_disk_gb }}"
+          scsi0: "{{ vm_storage_final }}:{{ vm_disk_final }}G"
       register: disk_result
-
-    - name: Show disk result
-      debug:
-        msg: "{{ disk_result.status }}"
+      ignore_errors: false
 
     #################################################################
-    # 4. Add network
+    # 5. Add network
     #################################################################
-
-    - name: Add NIC
+    - name: Add network interface
       uri:
-        url: "https://{{ api_host }}:8006/api2/json/nodes/{{ pve_node }}/qemu/{{ new_vmid }}/config"
+        url: "https://{{ api_host }}:8006/api2/json/nodes/{{ vm_node_final }}/qemu/{{ new_vmid }}/config"
         method: PUT
         validate_certs: no
-        body_format: form-urlencoded
         headers:
           Authorization: "{{ api_token_header }}"
+        body_format: form-urlencoded
         body:
-          net0: "virtio,bridge={{ final_bridge }}"
-      register: nic_result
-
-    - name: Show NIC result
-      debug:
-        msg: "{{ nic_result.status }}"
+          net0: "virtio,bridge={{ vm_bridge_final }}"
+      register: net_result
+      ignore_errors: false
 
     #################################################################
-    # 5. Summary
+    # 6. Final output
     #################################################################
-
-    - name: Summary
+    - name: VM created successfully
       debug:
         msg:
           vmid: "{{ new_vmid }}"
-          name: "{{ final_vm_name }}"
-          mem: "{{ final_memory_mb }}"
-          cores: "{{ final_cores }}"
-          disk: "{{ final_disk_gb }}"
-          bridge: "{{ final_bridge }}"
-          node: "{{ pve_node }}"
-          storage: "{{ fixed_pve_storage }}"
+          name: "{{ vm_name_final }}"
+          node: "{{ vm_node_final }}"
+          storage: "{{ vm_storage_final }}"
+          bridge: "{{ vm_bridge_final }}"
