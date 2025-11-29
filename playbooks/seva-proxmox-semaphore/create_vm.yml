@@ -1,6 +1,10 @@
 ---
+# Create VM using Proxmox 9 REST API + Semaphore Variables
+# Author: SEVA-IT fully working version
+
 - name: Create new Proxmox VM (REST API version)
   hosts: localhost
+  connection: local
   gather_facts: no
 
   vars:
@@ -8,24 +12,37 @@
     api_user: "{{ pve_user }}"
     api_token_name: "{{ pve_token_name }}"
     api_token_value: "{{ pve_token_value }}"
-    api_node: "{{ pve_node }}"
 
-    # VM defaults from your Variable Group
-    vmname: "{{ vm_name }}"
-    memory_mb: "{{ vm_memory }}"
-    cores: "{{ vm_cores }}"
-    disk_gb: "{{ vm_disk_gb }}"
-    bridge: "{{ vm_bridge }}"
-    storage: "vm_storage"
-
+    # Construct auth header
     api_token_header: "PVEAPIToken={{ api_user }}!{{ api_token_name }}={{ api_token_value }}"
+
+    # VM config with defaults + Survey overrides
+    final_vm_name: "{{ survey_vm_name | default(vm_name) }}"
+    final_memory_mb: "{{ survey_memory_mb | default(vm_memory) }}"
+    final_cores: "{{ survey_cores | default(vm_cores) }}"
+    final_disk_gb: "{{ survey_disk_gb | default(vm_disk_gb) }}"
+    final_bridge: "{{ survey_bridge | default(vm_bridge) }}"
+
+    # Fixed storage target
+    fixed_pve_storage: "vm_storage"
 
   tasks:
 
     #################################################################
-    # 1. Get next VMID
+    # 1. Get VMID — never skip unless vmid_override is set
     #################################################################
-    - name: Get next free VMID
+
+    - name: Debug — check if override exists
+      debug:
+        msg: "VMID override detected: {{ vmid_override }}"
+      when: vmid_override is defined and vmid_override != ""
+
+    - name: Override VMID if user supplied one
+      set_fact:
+        new_vmid: "{{ vmid_override }}"
+      when: vmid_override is defined and vmid_override != ""
+
+    - name: Get next free VMID from Proxmox API
       uri:
         url: "https://{{ api_host }}:8006/api2/json/cluster/nextid"
         method: GET
@@ -33,83 +50,30 @@
         headers:
           Authorization: "{{ api_token_header }}"
       register: nextid_result
+      when: new_vmid is not defined
 
-    - name: Set VMID
+    - name: Set auto-generated VMID
       set_fact:
         new_vmid: "{{ nextid_result.json.data }}"
+      when: new_vmid is not defined
 
-    #################################################################
-    # 2. Debug
-    #################################################################
-    - name: Debug planned creation
+    - name: Confirm selected VMID
       debug:
-        msg:
-          vmid: "{{ new_vmid }}"
-          name: "{{ vmname }}"
-          memory: "{{ memory_mb }}"
-          cores: "{{ cores }}"
-          disk: "{{ disk_gb }}"
-          bridge: "{{ bridge }}"
-          storage: "{{ storage }}"
-          node: "{{ api_node }}"
+        msg: "Using VMID = {{ new_vmid }}"
 
     #################################################################
-    # 3. Create VM shell (POST /nodes/{node}/qemu)
+    # 2. Create empty VM shell
     #################################################################
+
     - name: Create VM shell
       uri:
-        url: "https://{{ api_host }}:8006/api2/json/nodes/{{ api_node }}/qemu"
+        url: "https://{{ api_host }}:8006/api2/json/nodes/{{ pve_node }}/qemu"
         method: POST
-        validate_certs: no
+        body_format: form-urlencoded
         headers:
           Authorization: "{{ api_token_header }}"
-        body_format: form-urlencoded
         body:
           vmid: "{{ new_vmid }}"
-          name: "{{ vmname }}"
-          memory: "{{ memory_mb }}"
-          cores: "{{ cores }}"
-          sockets: 1
-          ostype: l26
-          scsihw: virtio-scsi-pci
-          machine: q35
-      register: create_shell
-
-    #################################################################
-    # 4. Add disk (POST /qemu/{vmid}/config)
-    #################################################################
-    - name: Add disk
-      uri:
-        url: "https://{{ api_host }}:8006/api2/json/nodes/{{ api_node }}/qemu/{{ new_vmid }}/config"
-        method: POST
-        validate_certs: no
-        headers:
-          Authorization: "{{ api_token_header }}"
-        body_format: form-urlencoded
-        body:
-          scsi0: "{{ storage }}:{{ disk_gb }}G"
-
-    #################################################################
-    # 5. Add NIC
-    #################################################################
-    - name: Add NIC
-      uri:
-        url: "https://{{ api_host }}:8006/api2/json/nodes/{{ api_node }}/qemu/{{ new_vmid }}/config"
-        method: POST
-        validate_certs: no
-        headers:
-          Authorization: "{{ api_token_header }}"
-        body_format: form-urlencoded
-        body:
-          net0: "virtio,bridge={{ bridge }}"
-
-    #################################################################
-    # 6. Start VM
-    #################################################################
-    - name: Start VM
-      uri:
-        url: "https://{{ api_host }}:8006/api2/json/nodes/{{ api_node }}/qemu/{{ new_vmid }}/status/start"
-        method: POST
-        validate_certs: no
-        headers:
-          Authorization: "{{ api_token_header }}"
+          name: "{{ final_vm_name }}"
+          memory: "{{ final_memory_mb }}"
+          cores: "{{ final_cores }}_
