@@ -4,13 +4,14 @@
   gather_facts: false
 
   vars:
+
     api_host: "{{ pve_host }}"
     api_user: "{{ pve_user }}"
     api_token_name: "{{ pve_token_name }}"
     api_token_value: "{{ pve_token_value }}"
     api_token_header: "PVEAPIToken={{ api_user }}!{{ api_token_name }}={{ api_token_value }}"
 
-    # Survey-values with defaults
+    # Survey + fallback defaults
     vm_name_final: "{{ survey_vm_name | default(vm_name) }}"
     vm_cores_final: "{{ survey_vm_cores | default(vm_cores) }}"
     vm_memory_final: "{{ survey_vm_memory | default(vm_memory) }}"
@@ -21,9 +22,6 @@
 
   tasks:
 
-    #################################################################
-    # 1. Debug settings
-    #################################################################
     - name: Show parameters
       debug:
         msg:
@@ -34,20 +32,20 @@
           disk: "{{ vm_disk_final }}"
           bridge: "{{ vm_bridge_final }}"
           node: "{{ vm_node_final }}"
-          override: "{{ vmid_override | default('NOT_SET') }}"
+          override: "{{ vmid_manual_id | default('none') }}"
           storage: "{{ vm_storage_final }}"
 
     #################################################################
-    # 2. VMID handling
+    # 1. VMID HANDLING (NEW LOGIC)
     #################################################################
 
-    # STEP 1: If override exists, we use it.
-    - name: Apply override VMID (if defined)
+    # If manual override is defined, we use it
+    - name: Apply manual VMID override
       set_fact:
-        new_vmid: "{{ vmid_override }}"
-      when: vmid_override is defined
+        new_vmid: "{{ vmid_manual_id }}"
+      when: vmid_manual_id is defined
 
-    # STEP 2: Only generate VMID if override is NOT defined
+    # Only run auto ID generation if no override exists
     - name: Get next free VMID
       uri:
         url: "https://{{ api_host }}:8006/api2/json/cluster/nextid"
@@ -56,19 +54,19 @@
         headers:
           Authorization: "{{ api_token_header }}"
       register: nextid_result
-      when: vmid_override is not defined
+      when: vmid_manual_id is not defined
 
     - name: Set auto VMID
       set_fact:
-        new_vmid: "{{ nextid_result.json.data }}"
-      when: vmid_override is not defined
+        new_vmid: "{{ nextid_result.json.data | int }}"
+      when: vmid_manual_id is not defined
 
-    - name: Debug final VMID
+    - name: Show final VMID
       debug:
         msg: "FINAL VMID = {{ new_vmid }}"
 
     #################################################################
-    # 3. Create VM shell
+    # 2. CREATE VM SHELL
     #################################################################
     - name: Create VM shell
       uri:
@@ -89,7 +87,7 @@
           balloon: 0
 
     #################################################################
-    # 4. Add disk
+    # 3. ADD DISK
     #################################################################
     - name: Add disk
       uri:
@@ -103,7 +101,7 @@
           scsi0: "{{ vm_storage_final }}:{{ vm_disk_final }}G"
 
     #################################################################
-    # 5. Add NIC
+    # 4. ADD NIC
     #################################################################
     - name: Add NIC
       uri:
@@ -117,7 +115,7 @@
           net0: "virtio,bridge={{ vm_bridge_final }}"
 
     #################################################################
-    # 6. Done
+    # 5. DONE
     #################################################################
     - name: Done
       debug:
