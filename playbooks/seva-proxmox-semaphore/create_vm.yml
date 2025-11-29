@@ -8,14 +8,13 @@
     # TOKEN AUTH
     #############################################################
     api_host: "{{ pve_host }}"
-    api_user: "{{ pve_user }}"              # fx: ansible@pve
-    api_token_name: "{{ pve_token_name }}"   # fx: ansible-token
-    api_token_value: "{{ pve_token_value }}" # SECRET fra Semaphore
-
+    api_user: "{{ pve_user }}"
+    api_token_name: "{{ pve_token_name }}"
+    api_token_value: "{{ pve_token_value }}"
     api_token_header: "PVEAPIToken={{ api_user }}!{{ api_token_name }}={{ api_token_value }}"
 
     #############################################################
-    # VM SETTINGS – defaults hvis ikke Survey udfylder noget
+    # VM SETTINGS (defaults hvis ikke survey udfylder noget)
     #############################################################
     vm_name_final: "{{ survey_vm_name | default(vm_name) }}"
     vm_cores_final: "{{ survey_vm_cores | default(vm_cores) }}"
@@ -31,7 +30,6 @@
     # 1. Debug input
     #################################################################
     - name: Show parameters that will be used
-    <|start_of_focus|>
       debug:
         msg:
           host: "{{ api_host }}"
@@ -42,17 +40,16 @@
           bridge: "{{ vm_bridge_final }}"
           node: "{{ vm_node_final }}"
           storage: "{{ vm_storage_final }}"
+
     #################################################################
-    # 2. VMID handling (robust version)
+    # 2. VMID handling
     #################################################################
 
-    # Hvis override er sat og ikke tom → brug den
     - name: Use override VMID if provided
       set_fact:
         new_vmid: "{{ vmid_override }}"
       when: vmid_override is defined and vmid_override | string | length > 0
 
-    # Hvis override ikke bruges → hent nextid
     - name: Get next free VMID
       uri:
         url: "https://{{ api_host }}:8006/api2/json/cluster/nextid"
@@ -63,8 +60,7 @@
       register: nextid_result
       when: new_vmid is not defined
 
-    # Hvis vi stadig ikke har VMID → tag nextid
-    - name: Set VMID from nextid_result
+    - name: Set auto vmid
       set_fact:
         new_vmid: "{{ nextid_result.json.data }}"
       when: new_vmid is not defined
@@ -94,14 +90,14 @@
           agent: 1
           balloon: 0
       register: create_vm
-      ignore_errors: false
 
     #################################################################
-    # 4. Add disk
+    # 4. Add VM disk
     #################################################################
     - name: Add VM disk
       uri:
-        url: "https://{{ api_host }}:8006/api2/json/nodes/{{ vm_node_final }}/qemu/{{ new_vmid }}/config"
+        url: >
+          https://{{ api_host }}:8006/api2/json/nodes/{{ vm_node_final }}/qemu/{{ new_vmid }}/config
         method: PUT
         validate_certs: no
         headers:
@@ -110,14 +106,14 @@
         body:
           scsi0: "{{ vm_storage_final }}:{{ vm_disk_final }}G"
       register: disk_result
-      ignore_errors: false
 
     #################################################################
     # 5. Add network
     #################################################################
     - name: Add network interface
       uri:
-        url: "https://{{ api_host }}:8006/api2/json/nodes/{{ vm_node_final }}/qemu/{{ new_vmid }}/config"
+        url: >
+          https://{{ api_host }}:8006/api2/json/nodes/{{ vm_node_final }}/qemu/{{ new_vmid }}/config
         method: PUT
         validate_certs: no
         headers:
@@ -126,16 +122,5 @@
         body:
           net0: "virtio,bridge={{ vm_bridge_final }}"
       register: net_result
-      ignore_errors: false
 
-    #################################################################
-    # 6. Final output
-    #################################################################
-    - name: VM created successfully
-      debug:
-        msg:
-          vmid: "{{ new_vmid }}"
-          name: "{{ vm_name_final }}"
-          node: "{{ vm_node_final }}"
-          storage: "{{ vm_storage_final }}"
-          bridge: "{{ vm_bridge_final }}"
+    #######################
