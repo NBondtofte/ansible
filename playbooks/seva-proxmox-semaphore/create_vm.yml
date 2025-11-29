@@ -1,121 +1,113 @@
 ---
 - name: Create new Proxmox VM (via Semaphore)
   hosts: localhost
-  gather_facts: false
+  gather_facts: no
 
   vars:
-    # API-vars kommer fra Semaphore Variable Groups (proxmox-api)
+    # API credentials (kommer fra Semaphore var-group)
     api_host: "{{ pve_host }}"
     api_user: "{{ pve_user }}"
-    api_token_id: "{{ pve_token_name }}"
+    api_token_name: "{{ pve_token_name }}"
     api_token_secret: "{{ pve_token_value }}"
-    pve_node: "{{ pve_node }}"
+    api_node: "{{ pve_node }}"
 
-    # Create-VM defaults (fra Variable Group: proxmox-create-vm)
-    vm_name: "{{ vm_name | default('Seva-VM') }}"
-    memory_mb: "{{ memory_mb | default(4096) }}"
-    cores: "{{ cores | default(2) }}"
-    disk_size: "{{ disk_size | default('30G') }}"
-    bridge: "{{ bridge | default('vmbr1') }}"
-    fixed_pve_storage: "vm_storage"   # Altid SSD storage
+    # VM settings (kommer fra Semaphore var-group)
+    vmname: "{{ vm_name }}"
+    memory_mb: "{{ vm_memory }}"
+    cores: "{{ vm_cores }}"
+    disk_gb: "{{ vm_disk_gb }}"
+    bridge: "{{ vm_bridge }}"
 
   tasks:
 
-    #####################################################################
-    # 1. Find næste ledige VMID via Proxmox API (korekt API kald)
-    #####################################################################
-    - name: Get next free VMID from Proxmox API
-      uri:
-        url: "https://{{ api_host }}:8006/api2/json/cluster/nextid"
-        method: GET
+    #################################################################
+    # 1. Get next free VMID from Proxmox API
+    #################################################################
+    - name: Get next free VMID from API
+      community.proxmox.pve_next_vmid:
+        api_host: "{{ api_host }}"
+        api_user: "{{ api_user }}"
+        api_token_id: "{{ api_user }}!{{ api_token_name }}"
+        api_token_secret: "{{ api_token_secret }}"
         validate_certs: false
-        headers:
-          Authorization: "PVEAPIToken={{ api_user }}!{{ api_token_id }}={{ api_token_secret }}"
-      register: nextid_response
+      register: nextid
 
     - name: Save VMID
       set_fact:
-        next_vmid: "{{ nextid_response.json.data }}"
+        new_vmid: "{{ nextid.vmid }}"
 
-    - name: Debug – next VMID
-      debug:
-        msg: "Next VMID = {{ next_vmid }}"
+    #################################################################
+    # 2. Show what will be created (debug)
+    #################################################################
+    - name: Show parameters that will be used
+      ansible.builtin.debug:
+        msg:
+          api_host: "{{ api_host }}"
+          api_user: "{{ api_user }}"
+          node: "{{ api_node }}"
+          vmid: "{{ new_vmid }}"
+          vm_name: "{{ vmname }}"
+          ram_mb: "{{ memory_mb }}"
+          cores: "{{ cores }}"
+          disk_gb: "{{ disk_gb }}"
+          bridge: "{{ bridge }}"
+          storage: "vm_storage"
 
-    #####################################################################
-    # 2. Opret selve VM’en
-    #####################################################################
-    - name: Create VM
-      community.proxmox.proxmox:
+    #################################################################
+    # 3. Create VM (bare bones)
+    #################################################################
+    - name: Create VM shell
+      community.proxmox.pve_kvm:
         api_host: "{{ api_host }}"
         api_user: "{{ api_user }}"
-        api_token_id: "{{ api_token_id }}"
+        api_token_id: "{{ api_user }}!{{ api_token_name }}"
         api_token_secret: "{{ api_token_secret }}"
         validate_certs: false
-        node: "{{ pve_node }}"
-        vmid: "{{ next_vmid }}"
-        state: present
-        name: "{{ vm_name }}"
+
+        node: "{{ api_node }}"
+        vmid: "{{ new_vmid }}"
+        name: "{{ vmname }}"
         memory: "{{ memory_mb }}"
         cores: "{{ cores }}"
         sockets: 1
-        scsihw: virtio-scsi-pci
+        machine: q35
         ostype: l26
+        scsihw: virtio-scsi-pci
+        state: present
 
-    #####################################################################
-    # 3. Tilføj DISK (SCSI0)
-    #####################################################################
-    - name: Add SCSI Disk
-      community.proxmox.proxmox:
+    #################################################################
+    # 4. Add disk
+    #################################################################
+    - name: Add SCSI disk
+      community.proxmox.pve_disk:
         api_host: "{{ api_host }}"
         api_user: "{{ api_user }}"
-        api_token_id: "{{ api_token_id }}"
+        api_token_id: "{{ api_user }}!{{ api_token_name }}"
         api_token_secret: "{{ api_token_secret }}"
         validate_certs: false
-        node: "{{ pve_node }}"
-        vmid: "{{ next_vmid }}"
-        state: update
-        scsi:
-          scsi0:
-            storage: "{{ fixed_pve_storage }}"
-            size: "{{ disk_size }}"
-            type: disk
 
-    #####################################################################
-    # 4. Tilføj NETKORT (virtio)
-    #####################################################################
-    - name: Add Network Interface
-      community.proxmox.proxmox:
+        node: "{{ api_node }}"
+        vmid: "{{ new_vmid }}"
+        disk: "scsi0"
+        size: "{{ disk_gb }}G"
+        storage: "vm_storage"
+        type: scsi
+        state: present
+
+    #################################################################
+    # 5. Add NIC
+    #################################################################
+    - name: Add network interface
+      community.proxmox.pve_nic:
         api_host: "{{ api_host }}"
         api_user: "{{ api_user }}"
-        api_token_id: "{{ api_token_id }}"
+        api_token_id: "{{ api_user }}!{{ api_token_name }}"
         api_token_secret: "{{ api_token_secret }}"
         validate_certs: false
-        node: "{{ pve_node }}"
-        vmid: "{{ next_vmid }}"
-        state: update
-        net:
-          net0:
-            model: virtio
-            bridge: "{{ bridge }}"
 
-    #####################################################################
-    # 5. (Optional) Auto-start
-    #####################################################################
-    - name: Enable autostart
-      community.proxmox.proxmox:
-        api_host: "{{ api_host }}"
-        api_user: "{{ api_user }}"
-        api_token_id: "{{ api_token_id }}"
-        api_token_secret: "{{ api_token_secret }}"
-        validate_certs: false
-        vmid: "{{ next_vmid }}"
-        node: "{{ pve_node }}"
-        state: update
-        onboot: true
-
-    #####################################################################
-    # 6. DONE
-    #####################################################################
-    - name: Done
-      debug:
-        msg: "VM '{{ vm_name }}' (VMID: {{ next_vmid }}) created successfully on {{ pve_node }}"
+        node: "{{ api_node }}"
+        vmid: "{{ new_vmid }}"
+        net: "net0"
+        model: virtio
+        bridge: "{{ bridge }}"
+        state: present
