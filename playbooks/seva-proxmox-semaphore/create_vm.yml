@@ -5,14 +5,18 @@
 
   vars:
 
-    # API credentials from Variable Group
+    ##############################################################
+    # Proxmox API credentials (DIRECT from variable group)
+    ##############################################################
     api_host: "{{ pve_host }}"
     api_user: "{{ pve_user }}"
     api_token_name: "{{ pve_token_name }}"
     api_token_value: "{{ pve_token_value }}"
     api_token_header: "PVEAPIToken={{ api_user }}!{{ api_token_name }}={{ api_token_value }}"
 
-    # VM defaults from Variable Groups (NO survey)
+    ##############################################################
+    # VM parameters (DIRECT from variable group)
+    ##############################################################
     vm_name_final: "{{ vm_name }}"
     vm_cores_final: "{{ vm_cores }}"
     vm_memory_final: "{{ vm_memory }}"
@@ -24,14 +28,15 @@
   tasks:
 
     #################################################################
-    # 0. Inspect parameters
+    # DEBUG PARAMS
     #################################################################
     - name: Show parameters
       debug:
         msg:
           host: "{{ api_host }}"
+          user: "{{ api_user }}"
           node: "{{ vm_node_final }}"
-          name: "{{ vm_name_final }}"
+          vm_name: "{{ vm_name_final }}"
           cores: "{{ vm_cores_final }}"
           memory: "{{ vm_memory_final }}"
           disk: "{{ vm_disk_final }}"
@@ -39,33 +44,33 @@
           storage: "{{ vm_storage_final }}"
 
     #################################################################
-    # 1. ALWAYS get next free VMID
+    # GET NEXT VMID
     #################################################################
     - name: Get next free VMID from Proxmox API
       uri:
         url: "https://{{ api_host }}:8006/api2/json/cluster/nextid"
         method: GET
-        validate_certs: no
+        validate_certs: false
         headers:
           Authorization: "{{ api_token_header }}"
       register: nextid_result
 
-    - name: Set generated VMID
+    - name: Set VMID
       set_fact:
         new_vmid: "{{ nextid_result.json.data | int }}"
 
-    - name: Show final VMID
+    - name: Show VMID
       debug:
-        msg: "FINAL VMID = {{ new_vmid }}"
+        msg: "Final VMID = {{ new_vmid }}"
 
     #################################################################
-    # 2. CREATE VM SHELL
+    # CREATE VM SHELL
     #################################################################
     - name: Create VM shell
       uri:
         url: "https://{{ api_host }}:8006/api2/json/nodes/{{ vm_node_final }}/qemu"
         method: POST
-        validate_certs: no
+        validate_certs: false
         headers:
           Authorization: "{{ api_token_header }}"
         body_format: form-urlencoded
@@ -75,18 +80,18 @@
           ostype: l26
           cores: "{{ vm_cores_final }}"
           memory: "{{ vm_memory_final }}"
-          scsihw: virtio-scsi-pci
           agent: 1
+          scsihw: virtio-scsi-pci
           balloon: 0
 
     #################################################################
-    # 3. ADD DISK
+    # ADD DISK
     #################################################################
     - name: Add disk
       uri:
         url: "https://{{ api_host }}:8006/api2/json/nodes/{{ vm_node_final }}/qemu/{{ new_vmid }}/config"
         method: PUT
-        validate_certs: no
+        validate_certs: false
         headers:
           Authorization: "{{ api_token_header }}"
         body_format: form-urlencoded
@@ -94,13 +99,13 @@
           scsi0: "{{ vm_storage_final }}:{{ vm_disk_final }}G"
 
     #################################################################
-    # 4. ADD NETWORK
+    # ADD NIC
     #################################################################
-    - name: Add NIC
+    - name: Add network interface
       uri:
         url: "https://{{ api_host }}:8006/api2/json/nodes/{{ vm_node_final }}/qemu/{{ new_vmid }}/config"
         method: PUT
-        validate_certs: no
+        validate_certs: false
         headers:
           Authorization: "{{ api_token_header }}"
         body_format: form-urlencoded
@@ -108,10 +113,10 @@
           net0: "virtio,bridge={{ vm_bridge_final }}"
 
     #################################################################
-    # 5. DONE
+    # DONE
     #################################################################
     - name: Done
       debug:
         msg:
-          created_vmid: "{{ new_vmid }}"
+          vmid: "{{ new_vmid }}"
           name: "{{ vm_name_final }}"
