@@ -1,122 +1,123 @@
 ---
-- name: Create new Proxmox VM (REST API)
-  hosts: local
+- name: Create new Proxmox VM via REST API
+  hosts: localhost
+  connection: local
   gather_facts: false
 
   vars:
-
-    ##############################################################
-    # Proxmox API credentials (DIRECT from variable group)
-    ##############################################################
-    api_host: "{{ pve_host }}"
-    api_user: "{{ pve_user }}"
-    api_token_name: "{{ pve_token_name }}"
-    api_token_value: "{{ pve_token_value }}"
-    api_token_header: "PVEAPIToken={{ api_user }}!{{ api_token_name }}={{ api_token_value }}"
-
-    ##############################################################
-    # VM parameters (DIRECT from variable group)
-    ##############################################################
-    vm_name_final: "{{ vm_name }}"
-    vm_cores_final: "{{ vm_cores }}"
-    vm_memory_final: "{{ vm_memory }}"
-    vm_disk_final: "{{ vm_disk_gb }}"
-    vm_bridge_final: "{{ vm_bridge }}"
-    vm_node_final: "{{ pve_node }}"
-    vm_storage_final: "vm_storage"
+    api_base: "https://{{ pve_host }}:8006/api2/json"
+    token_id: "{{ pve_user }}!{{ pve_token_name }}"
+    token_secret: "{{ pve_token_value }}"
 
   tasks:
 
-    #################################################################
-    # DEBUG PARAMS
-    #################################################################
+    ###########################################################################
+    # 1. Show parameters
+    ###########################################################################
     - name: Show parameters
       debug:
         msg:
-          host: "{{ api_host }}"
-          user: "{{ api_user }}"
-          node: "{{ vm_node_final }}"
-          vm_name: "{{ vm_name_final }}"
-          cores: "{{ vm_cores_final }}"
-          memory: "{{ vm_memory_final }}"
-          disk: "{{ vm_disk_final }}"
-          bridge: "{{ vm_bridge_final }}"
-          storage: "{{ vm_storage_final }}"
+          host: "{{ pve_host }}"
+          node: "{{ pve_node }}"
+          vm_name: "{{ vm_name }}"
+          memory: "{{ vm_memory }}"
+          cores: "{{ vm_cores }}"
+          disk: "{{ vm_disk_gb }}"
+          bridge: "{{ vm_bridge }}"
+          storage: "vm_storage"
 
-    #################################################################
-    # GET NEXT VMID
-    #################################################################
-    - name: Get next free VMID from Proxmox API
+    ###########################################################################
+    # 2. ALWAYS get next free VMID
+    ###########################################################################
+    - name: Get next VMID from Proxmox
       uri:
-        url: "https://{{ api_host }}:8006/api2/json/cluster/nextid"
+        url: "{{ api_base }}/cluster/nextid"
         method: GET
         validate_certs: false
         headers:
-          Authorization: "{{ api_token_header }}"
+          Authorization: "PVEAPIToken={{ token_id }}={{ token_secret }}"
       register: nextid_result
 
-    - name: Set VMID
+    - name: Set VMID fact
       set_fact:
         new_vmid: "{{ nextid_result.json.data | int }}"
 
-    - name: Show VMID
+    - name: Debug VMID
       debug:
-        msg: "Final VMID = {{ new_vmid }}"
+        msg: "Using VMID: {{ new_vmid }}"
 
-    #################################################################
-    # CREATE VM SHELL
-    #################################################################
+    ###########################################################################
+    # 3. Create empty VM shell
+    ###########################################################################
     - name: Create VM shell
       uri:
-        url: "https://{{ api_host }}:8006/api2/json/nodes/{{ vm_node_final }}/qemu"
+        url: "{{ api_base }}/nodes/{{ pve_node }}/qemu"
         method: POST
         validate_certs: false
         headers:
-          Authorization: "{{ api_token_header }}"
+          Content-Type: application/x-www-form-urlencoded
+          Authorization: "PVEAPIToken={{ token_id }}={{ token_secret }}"
         body_format: form-urlencoded
         body:
           vmid: "{{ new_vmid }}"
-          name: "{{ vm_name_final }}"
-          ostype: l26
-          cores: "{{ vm_cores_final }}"
-          memory: "{{ vm_memory_final }}"
-          agent: 1
-          scsihw: virtio-scsi-pci
-          balloon: 0
+          name: "{{ vm_name }}"
+          cores: "{{ vm_cores }}"
+          memory: "{{ vm_memory }}"
+          sockets: "1"
+          ostype: "l26"
+          scsihw: "virtio-scsi-pci"
+          agent: "1"
+      register: create_shell
 
-    #################################################################
-    # ADD DISK
-    #################################################################
-    - name: Add disk
+    - name: Debug shell creation
+      debug:
+        var: create_shell.json
+
+    ###########################################################################
+    # 4. Create system disk
+    ###########################################################################
+    - name: Create system disk
       uri:
-        url: "https://{{ api_host }}:8006/api2/json/nodes/{{ vm_node_final }}/qemu/{{ new_vmid }}/config"
-        method: PUT
+        url: "{{ api_base }}/nodes/{{ pve_node }}/qemu/{{ new_vmid }}/config"
+        method: POST
         validate_certs: false
         headers:
-          Authorization: "{{ api_token_header }}"
+          Content-Type: application/x-www-form-urlencoded
+          Authorization: "PVEAPIToken={{ token_id }}={{ token_secret }}"
         body_format: form-urlencoded
         body:
-          scsi0: "{{ vm_storage_final }}:{{ vm_disk_final }}G"
+          scsi0: "vm_storage:{{ vm_disk_gb }}G"
+          boot: "scsi0"
+      register: disk_result
 
-    #################################################################
-    # ADD NIC
-    #################################################################
+    ###########################################################################
+    # 5. Attach network interface
+    ###########################################################################
     - name: Add network interface
       uri:
-        url: "https://{{ api_host }}:8006/api2/json/nodes/{{ vm_node_final }}/qemu/{{ new_vmid }}/config"
-        method: PUT
+        url: "{{ api_base }}/nodes/{{ pve_node }}/qemu/{{ new_vmid }}/config"
+        method: POST
         validate_certs: false
         headers:
-          Authorization: "{{ api_token_header }}"
+          Content-Type: application/x-www-form-urlencoded
+          Authorization: "PVEAPIToken={{ token_id }}={{ token_secret }}"
         body_format: form-urlencoded
         body:
-          net0: "virtio,bridge={{ vm_bridge_final }}"
+          net0: "virtio,bridge={{ vm_bridge }}"
+      register: net_result
 
-    #################################################################
-    # DONE
-    #################################################################
-    - name: Done
+    ###########################################################################
+    # 6. Start the VM
+    ###########################################################################
+    - name: Start VM
+      uri:
+        url: "{{ api_base }}/nodes/{{ pve_node }}/qemu/{{ new_vmid }}/status/start"
+        method: POST
+        validate_certs: false
+        headers:
+          Authorization: "PVEAPIToken={{ token_id }}={{ token_secret }}"
+      register: start_result
+
+    - name: VM created
       debug:
-        msg:
-          vmid: "{{ new_vmid }}"
-          name: "{{ vm_name_final }}"
+        msg: "VM {{ vm_name }} created and started with VMID {{ new_vmid }}"
