@@ -4,14 +4,14 @@
   gather_facts: no
 
   vars:
-    # API credentials (fra Semaphore Variable Groups)
+    # API credentials from Semaphore
     api_host: "{{ pve_host }}"
     api_user: "{{ pve_user }}"
     api_token_id: "{{ pve_user }}!{{ pve_token_name }}"
     api_token_secret: "{{ pve_token_value }}"
     api_node: "{{ pve_node }}"
 
-    # VM settings (fra create-vm Variable Group)
+    # VM defaults from create-vm variable group
     vmname: "{{ vm_name }}"
     memory_mb: "{{ vm_memory }}"
     cores: "{{ vm_cores }}"
@@ -21,39 +21,38 @@
   tasks:
 
     #################################################################
-    # 1. FÅ NÆSTE VMID (community.general modul)
+    # 1. Get next free VMID (via REST API, works everywhere)
     #################################################################
-    - name: Get next free VMID
-      community.general.proxmox_nextid:
-        api_host: "{{ api_host }}"
-        api_user: "{{ api_user }}"
-        api_token_id: "{{ api_token_id }}"
-        api_token_secret: "{{ api_token_secret }}"
+    - name: Get next free VMID (REST API)
+      uri:
+        url: "https://{{ api_host }}:8006/api2/json/cluster/nextid"
+        method: GET
         validate_certs: false
-      register: nextid
+        headers:
+          Authorization: "PVEAPIToken={{ api_user }}!{{ pve_token_name }}={{ api_token_value }}"
+      register: vmid_response
 
-    - name: Save VMID
+    - name: Extract VMID
       set_fact:
-        new_vmid: "{{ nextid.vmid }}"
+        new_vmid: "{{ vmid_response.json.data }}"
 
     #################################################################
-    # 2. Debug
+    # 2. Debug values
     #################################################################
-    - name: Show planned parameters
-      ansible.builtin.debug:
+    - name: Debug planned deployment settings
+      debug:
         msg:
-          api_host: "{{ api_host }}"
-          node: "{{ api_node }}"
           vmid: "{{ new_vmid }}"
-          vm_name: "{{ vmname }}"
-          ram_mb: "{{ memory_mb }}"
+          vmname: "{{ vmname }}"
           cores: "{{ cores }}"
+          memory_mb: "{{ memory_mb }}"
           disk_gb: "{{ disk_gb }}"
           bridge: "{{ bridge }}"
           storage: "vm_storage"
+          node: "{{ api_node }}"
 
     #################################################################
-    # 3. Create VM skeleton
+    # 3. Create VM shell
     #################################################################
     - name: Create VM shell
       community.proxmox.pve_kvm:
@@ -75,9 +74,9 @@
         state: present
 
     #################################################################
-    # 4. Add Disk
+    # 4. Add SCSI Disk
     #################################################################
-    - name: Add SCSI disk
+    - name: Add main disk
       community.proxmox.pve_disk:
         api_host: "{{ api_host }}"
         api_user: "{{ api_user }}"
@@ -96,7 +95,7 @@
     #################################################################
     # 5. Add NIC
     #################################################################
-    - name: Add NIC
+    - name: Add network interface
       community.proxmox.pve_nic:
         api_host: "{{ api_host }}"
         api_user: "{{ api_user }}"
