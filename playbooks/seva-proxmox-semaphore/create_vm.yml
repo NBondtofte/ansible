@@ -4,14 +4,14 @@
   gather_facts: no
 
   vars:
-    # API credentials (kommer fra Semaphore var-group)
+    # API credentials (fra Semaphore Variable Groups)
     api_host: "{{ pve_host }}"
     api_user: "{{ pve_user }}"
-    api_token_name: "{{ pve_token_name }}"
+    api_token_id: "{{ pve_user }}!{{ pve_token_name }}"
     api_token_secret: "{{ pve_token_value }}"
     api_node: "{{ pve_node }}"
 
-    # VM settings (kommer fra Semaphore var-group)
+    # VM settings (fra create-vm Variable Group)
     vmname: "{{ vm_name }}"
     memory_mb: "{{ vm_memory }}"
     cores: "{{ vm_cores }}"
@@ -21,13 +21,13 @@
   tasks:
 
     #################################################################
-    # 1. Get next free VMID from Proxmox API
+    # 1. FÅ NÆSTE VMID (community.general modul)
     #################################################################
-    - name: Get next free VMID from API
-      community.proxmox.pve_next_vmid:
+    - name: Get next free VMID
+      community.general.proxmox_nextid:
         api_host: "{{ api_host }}"
         api_user: "{{ api_user }}"
-        api_token_id: "{{ api_user }}!{{ api_token_name }}"
+        api_token_id: "{{ api_token_id }}"
         api_token_secret: "{{ api_token_secret }}"
         validate_certs: false
       register: nextid
@@ -37,13 +37,12 @@
         new_vmid: "{{ nextid.vmid }}"
 
     #################################################################
-    # 2. Show what will be created (debug)
+    # 2. Debug
     #################################################################
-    - name: Show parameters that will be used
+    - name: Show planned parameters
       ansible.builtin.debug:
         msg:
           api_host: "{{ api_host }}"
-          api_user: "{{ api_user }}"
           node: "{{ api_node }}"
           vmid: "{{ new_vmid }}"
           vm_name: "{{ vmname }}"
@@ -54,13 +53,13 @@
           storage: "vm_storage"
 
     #################################################################
-    # 3. Create VM (bare bones)
+    # 3. Create VM skeleton
     #################################################################
     - name: Create VM shell
       community.proxmox.pve_kvm:
         api_host: "{{ api_host }}"
         api_user: "{{ api_user }}"
-        api_token_id: "{{ api_user }}!{{ api_token_name }}"
+        api_token_id: "{{ api_token_id }}"
         api_token_secret: "{{ api_token_secret }}"
         validate_certs: false
 
@@ -76,13 +75,13 @@
         state: present
 
     #################################################################
-    # 4. Add disk
+    # 4. Add Disk
     #################################################################
     - name: Add SCSI disk
       community.proxmox.pve_disk:
         api_host: "{{ api_host }}"
         api_user: "{{ api_user }}"
-        api_token_id: "{{ api_user }}!{{ api_token_name }}"
+        api_token_id: "{{ api_token_id }}"
         api_token_secret: "{{ api_token_secret }}"
         validate_certs: false
 
@@ -97,11 +96,11 @@
     #################################################################
     # 5. Add NIC
     #################################################################
-    - name: Add network interface
+    - name: Add NIC
       community.proxmox.pve_nic:
         api_host: "{{ api_host }}"
         api_user: "{{ api_user }}"
-        api_token_id: "{{ api_user }}!{{ api_token_name }}"
+        api_token_id: "{{ api_token_id }}"
         api_token_secret: "{{ api_token_secret }}"
         validate_certs: false
 
