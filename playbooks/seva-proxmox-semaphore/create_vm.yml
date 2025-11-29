@@ -4,14 +4,13 @@
   gather_facts: false
 
   vars:
-    # AUTH – kommer fra Semaphore Variable Group
     api_host: "{{ pve_host }}"
     api_user: "{{ pve_user }}"
     api_token_name: "{{ pve_token_name }}"
     api_token_value: "{{ pve_token_value }}"
     api_token_header: "PVEAPIToken={{ api_user }}!{{ api_token_name }}={{ api_token_value }}"
 
-    # Survey / defaults merge
+    # Survey-values with defaults
     vm_name_final: "{{ survey_vm_name | default(vm_name) }}"
     vm_cores_final: "{{ survey_vm_cores | default(vm_cores) }}"
     vm_memory_final: "{{ survey_vm_memory | default(vm_memory) }}"
@@ -23,7 +22,7 @@
   tasks:
 
     #################################################################
-    # 1. Show settings
+    # 1. Debug settings
     #################################################################
     - name: Show parameters
       debug:
@@ -35,22 +34,20 @@
           disk: "{{ vm_disk_final }}"
           bridge: "{{ vm_bridge_final }}"
           node: "{{ vm_node_final }}"
+          override: "{{ vmid_override | default('NOT_SET') }}"
           storage: "{{ vm_storage_final }}"
-          override: "{{ vmid_override | default('none') }}"
 
     #################################################################
-    # 2. VMID handling (final safe version)
+    # 2. VMID handling
     #################################################################
 
-    - name: Normalize override value
+    # STEP 1: If override exists, we use it.
+    - name: Apply override VMID (if defined)
       set_fact:
-        vmid_override_value: "{{ vmid_override | default('') | string }}"
+        new_vmid: "{{ vmid_override }}"
+      when: vmid_override is defined
 
-    - name: Apply override VMID if present
-      set_fact:
-        new_vmid: "{{ vmid_override_value | trim }}"
-      when: (vmid_override_value | trim) != ""
-
+    # STEP 2: Only generate VMID if override is NOT defined
     - name: Get next free VMID
       uri:
         url: "https://{{ api_host }}:8006/api2/json/cluster/nextid"
@@ -59,19 +56,19 @@
         headers:
           Authorization: "{{ api_token_header }}"
       register: nextid_result
-      when: (vmid_override_value | trim) == ""
+      when: vmid_override is not defined
 
     - name: Set auto VMID
       set_fact:
         new_vmid: "{{ nextid_result.json.data }}"
-      when: (vmid_override_value | trim) == ""
+      when: vmid_override is not defined
 
     - name: Debug final VMID
       debug:
         msg: "FINAL VMID = {{ new_vmid }}"
 
     #################################################################
-    # 3. Create empty VM
+    # 3. Create VM shell
     #################################################################
     - name: Create VM shell
       uri:
@@ -86,11 +83,10 @@
           name: "{{ vm_name_final }}"
           cores: "{{ vm_cores_final }}"
           memory: "{{ vm_memory_final }}"
-          scsihw: virtio-scsi-pci
           ostype: l26
+          scsihw: virtio-scsi-pci
           agent: 1
           balloon: 0
-      register: vm_create
 
     #################################################################
     # 4. Add disk
@@ -105,10 +101,9 @@
         body_format: form-urlencoded
         body:
           scsi0: "{{ vm_storage_final }}:{{ vm_disk_final }}G"
-      register: disk_add
 
     #################################################################
-    # 5. Add network
+    # 5. Add NIC
     #################################################################
     - name: Add NIC
       uri:
@@ -120,15 +115,12 @@
         body_format: form-urlencoded
         body:
           net0: "virtio,bridge={{ vm_bridge_final }}"
-      register: net_add
 
     #################################################################
-    # 6. Finish
+    # 6. Done
     #################################################################
     - name: Done
       debug:
         msg:
           vmid: "{{ new_vmid }}"
           name: "{{ vm_name_final }}"
-          node: "{{ vm_node_final }}"
-          storage: "{{ vm_storage_final }}"
