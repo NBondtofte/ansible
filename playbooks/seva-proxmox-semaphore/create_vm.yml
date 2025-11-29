@@ -4,18 +4,14 @@
   gather_facts: false
 
   vars:
-    #############################################################
-    # TOKEN AUTH
-    #############################################################
+    # AUTH
     api_host: "{{ pve_host }}"
     api_user: "{{ pve_user }}"
     api_token_name: "{{ pve_token_name }}"
     api_token_value: "{{ pve_token_value }}"
     api_token_header: "PVEAPIToken={{ api_user }}!{{ api_token_name }}={{ api_token_value }}"
 
-    #############################################################
-    # VM SETTINGS (defaults hvis ikke survey udfylder noget)
-    #############################################################
+    # VM SETTINGS
     vm_name_final: "{{ survey_vm_name | default(vm_name) }}"
     vm_cores_final: "{{ survey_vm_cores | default(vm_cores) }}"
     vm_memory_final: "{{ survey_vm_memory | default(vm_memory) }}"
@@ -27,9 +23,9 @@
   tasks:
 
     #################################################################
-    # 1. Debug input
+    # 1. Show settings
     #################################################################
-    - name: Show parameters that will be used
+    - name: Show parameters
       debug:
         msg:
           host: "{{ api_host }}"
@@ -40,16 +36,24 @@
           bridge: "{{ vm_bridge_final }}"
           node: "{{ vm_node_final }}"
           storage: "{{ vm_storage_final }}"
+          override: "{{ vmid_override | default('none') }}"
 
     #################################################################
-    # 2. VMID handling
+    # 2. VMID handling (FULL SAFE VERSION)
     #################################################################
 
-    - name: Use override VMID if provided
+    # Ensure override exists as an empty string if not defined
+    - name: Normalize override value
       set_fact:
-        new_vmid: "{{ vmid_override }}"
-      when: vmid_override is defined and vmid_override | string | length > 0
+        vmid_override_value: "{{ vmid_override | default('') }}"
 
+    # If override is not empty → use it
+    - name: Apply override VMID
+      set_fact:
+        new_vmid: "{{ vmid_override_value }}"
+      when: vmid_override_value | length > 0
+
+    # If override is empty → call Proxmox API
     - name: Get next free VMID
       uri:
         url: "https://{{ api_host }}:8006/api2/json/cluster/nextid"
@@ -58,16 +62,17 @@
         headers:
           Authorization: "{{ api_token_header }}"
       register: nextid_result
-      when: new_vmid is not defined
+      when: vmid_override_value | length == 0
 
-    - name: Set auto vmid
+    # Set VMID from API
+    - name: Set auto VMID
       set_fact:
         new_vmid: "{{ nextid_result.json.data }}"
-      when: new_vmid is not defined
+      when: vmid_override_value | length == 0
 
     - name: Debug final VMID
       debug:
-        msg: "Using VMID: {{ new_vmid }}"
+        msg: "FINAL VMID = {{ new_vmid }}"
 
     #################################################################
     # 3. Create VM shell
@@ -92,12 +97,11 @@
       register: create_vm
 
     #################################################################
-    # 4. Add VM disk
+    # 4. Add disk
     #################################################################
     - name: Add VM disk
       uri:
-        url: >
-          https://{{ api_host }}:8006/api2/json/nodes/{{ vm_node_final }}/qemu/{{ new_vmid }}/config
+        url: "https://{{ api_host }}:8006/api2/json/nodes/{{ vm_node_final }}/qemu/{{ new_vmid }}/config"
         method: PUT
         validate_certs: no
         headers:
@@ -112,8 +116,7 @@
     #################################################################
     - name: Add network interface
       uri:
-        url: >
-          https://{{ api_host }}:8006/api2/json/nodes/{{ vm_node_final }}/qemu/{{ new_vmid }}/config
+        url: "https://{{ api_host }}:8006/api2/json/nodes/{{ vm_node_final }}/qemu/{{ new_vmid }}/config"
         method: PUT
         validate_certs: no
         headers:
@@ -123,4 +126,14 @@
           net0: "virtio,bridge={{ vm_bridge_final }}"
       register: net_result
 
-    #######################
+    #################################################################
+    # 6. Output
+    #################################################################
+    - name: VM created successfully
+      debug:
+        msg:
+          vmid: "{{ new_vmid }}"
+          name: "{{ vm_name_final }}"
+          node: "{{ vm_node_final }}"
+          storage: "{{ vm_storage_final }}"
+          bridge: "{{ vm_bridge_final }}"
