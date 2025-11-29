@@ -1,5 +1,5 @@
 ---
-- name: Create new VM on Proxmox
+- name: Create VM automatically
   hosts: local
   gather_facts: no
 
@@ -9,78 +9,33 @@
     pve_token_name: "{{ pve_token_name }}"
     pve_token_value: "{{ pve_token_value }}"
 
-    vm_id: "{{ vm_id }}"
-    vm_name: "{{ vm_name }}"
-    vm_cores: "{{ vm_cores }}"
-    vm_memory: "{{ vm_memory }}"
-    vm_disk: "{{ vm_disk }}"
-    vm_node: "sevahost1"
-    vm_storage: "vm_storage"
-    vm_bridge: "vmbr1"
-    vm_template: "9000"
-
   tasks:
 
-    - name: Create VM from cloud-init template
-      community.proxmox.proxmox:
+    - name: Get next free VMID
+      community.proxmox.pve_next_vmid:
         api_host: "{{ pve_host }}"
         api_user: "{{ pve_user }}"
         api_token_id: "{{ pve_token_name }}"
         api_token_secret: "{{ pve_token_value }}"
-        vmid: "{{ vm_id }}"
-        node: "{{ vm_node }}"
-        state: present
+      register: new_id
+
+    - name: Create VM
+      community.proxmox.proxmox_kvm:
+        api_host: "{{ pve_host }}"
+        api_user: "{{ pve_user }}"
+        api_token_id: "{{ pve_token_name }}"
+        api_token_secret: "{{ pve_token_value }}"
+        vmid: "{{ new_id.vmid }}"
         name: "{{ vm_name }}"
-        clone: "{{ vm_template }}"
-        full: true
-        storage: "{{ vm_storage }}"
-        format: qcow2
-
-    - name: Configure VM hardware (CPU, RAM)
-      community.proxmox.proxmox:
-        api_host: "{{ pve_host }}"
-        api_user: "{{ pve_user }}"
-        api_token_id: "{{ pve_token_name }}"
-        api_token_secret: "{{ pve_token_value }}"
-        vmid: "{{ vm_id }}"
-        node: "{{ vm_node }}"
-        state: present
-        memory: "{{ vm_memory }}"
         cores: "{{ vm_cores }}"
-
-    - name: Configure network interface
-      community.proxmox.proxmox:
-        api_host: "{{ pve_host }}"
-        api_user: "{{ pve_user }}"
-        api_token_id: "{{ pve_token_name }}"
-        api_token_secret: "{{ pve_token_value }}"
-        vmid: "{{ vm_id }}"
-        node: "{{ vm_node }}"
-        state: present
+        memory: "{{ vm_memory }}"
+        scsihw: "virtio-scsi-pci"
+        sata0: "{{ pve_storage }}:{{ vm_disk_gb }}"
+        ostype: l26
+        onboot: yes
         net0: "virtio,bridge={{ vm_bridge }}"
-
-    - name: Resize disk
-      community.proxmox.proxmox:
-        api_host: "{{ pve_host }}"
-        api_user: "{{ pve_user }}"
-        api_token_id: "{{ pve_token_name }}"
-        api_token_secret: "{{ pve_token_value }}"
-        vmid: "{{ vm_id }}"
-        node: "{{ vm_node }}"
         state: present
-        ide2: "cloudinit"
-        scsi0: "{{ vm_storage }}:{{ vm_disk }}"
 
-    - name: Start VM
-      community.proxmox.proxmox:
-        api_host: "{{ pve_host }}"
-        api_user: "{{ pve_user }}"
-        api_token_id: "{{ pve_token_name }}"
-        api_token_secret: "{{ pve_token_value }}"
-        vmid: "{{ vm_id }}"
-        node: "{{ vm_node }}"
-        state: started
-
-    - name: Done
+    - name: Show result
       debug:
-        msg: "VM {{ vm_name }} created and started successfully!"
+        msg: "VM '{{ vm_name }}' created with ID: {{ new_id.vmid }}"
